@@ -1,7 +1,7 @@
 # 0.0.05
 
 ## Added
-* Included functions for simpler model indexing
+* Included functions for simpler model indexing for sensors and joints
 
 # v0.0.4
 
