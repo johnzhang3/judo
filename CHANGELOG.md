@@ -1,3 +1,8 @@
+# 0.0.05
+
+## Added
+* Included functions for simpler model indexing
+
 # v0.0.4
 
 ## Fixed
