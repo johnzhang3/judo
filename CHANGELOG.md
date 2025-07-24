@@ -1,7 +1,7 @@
 # v0.0.4
 
 ## Added
-* Included functions for simpler model indexing for sensors and joints (@bhung, @alberthli, #76)
+* Included functions for simpler model indexing for sensors and joints (@bhung-bdai, @alberthli, #76)
 
 ## Fixed
 * Fixed bug after spec changes where unnamed geoms were causing `judo` to crash (@alberthli, @pculbertson, #72)
