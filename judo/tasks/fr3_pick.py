@@ -108,6 +108,7 @@ class FR3Pick(Task[FR3PickConfig]):
         """Initializes the LEAP cube rotation task."""
         super().__init__(model_path, sim_model_path=sim_model_path)
         self.reset_command = np.array([0, 0, 0, -1.57079, 0, 1.57079, -0.7853, 0.0])
+
         # object indices
         self.obj_pos_adr = self.get_joint_position_start_index("object_joint")
         self.obj_pos_slice = slice(self.obj_pos_adr, self.obj_pos_adr + 3)
