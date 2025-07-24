@@ -145,7 +145,7 @@ class Task(ABC, Generic[ConfigT]):
         return self.model.sensor(sensor_name).adr[0]
 
     def get_joint_position_start_index(self, joint_name: str) -> int:
-        """Returns the starting index of a joint's position in the 'states' array given the sensor's name.
+        """Returns the starting index of a joint's position in the 'states' array given the joint's name.
 
         Args:
             joint_name: The name of the joint to get the starting index in the position of the state array.
@@ -153,7 +153,9 @@ class Task(ABC, Generic[ConfigT]):
         return self.model.jnt_qposadr[self.model.joint(joint_name).id]
 
     def get_joint_velocity_start_index(self, joint_name: str) -> int:
-        """Returns the starting index of a joint's velocity in the 'states' array given the sensor's name.
+        """Returns the starting index of a joint's velocity in the 'states' array given the joint's name.
+
+        NOTE: This is the index of the joint's velocity in the state array, which is after the position indices!
 
         Args:
             joint_name: The name of the joint to get the starting index in the state array of.
