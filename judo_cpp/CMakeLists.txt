@@ -1,0 +1,98 @@
+cmake_minimum_required(VERSION 3.15)
+project(judo_cpp)
+
+set(CMAKE_CXX_STANDARD 17)
+find_package(OpenMP REQUIRED)
+find_package(Eigen3 REQUIRED)
+
+# 1. Locate Python, which is used to find the MuJoCo package
+find_package(Python
+  COMPONENTS
+    Interpreter
+    Development.Module
+  REQUIRED
+)
+execute_process(
+  COMMAND ${Python_EXECUTABLE} -c
+          "import mujoco, os; print(os.path.dirname(mujoco.__file__))"
+  OUTPUT_VARIABLE MJ_PKG_ROOT
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+message(STATUS "MuJoCo package root: ${MJ_PKG_ROOT}")
+
+# 2. Glob for the actual libmujoco.so file(s) there
+file(GLOB MUJOCO_LIB_FILES
+     "${MJ_PKG_ROOT}/libmujoco.so*"  # catches libmujoco.so.3.3.3, etc.
+)
+if(NOT MUJOCO_LIB_FILES)
+  message(FATAL_ERROR "Could not find any libmujoco.so* in ${MJ_PKG_ROOT}")
+endif()
+list(GET MUJOCO_LIB_FILES 0 MUJOCO_LIB)
+message(STATUS "Linking against MuJoCo library: ${MUJOCO_LIB}")
+
+# 3. Pull in mujoco headers - they're located under the include directory
+set(MJINC_DIR "${MJ_PKG_ROOT}/include")
+message(STATUS "MuJoCo include dir: ${MJINC_DIR}")
+include_directories(${MJINC_DIR})
+
+# 3.5. Find ONNX Runtime
+execute_process(
+  COMMAND ${Python_EXECUTABLE} -c
+          "import onnxruntime, os; print(os.path.dirname(onnxruntime.__file__))"
+  OUTPUT_VARIABLE ONNXRUNTIME_PKG_ROOT
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+message(STATUS "ONNX Runtime package root: ${ONNXRUNTIME_PKG_ROOT}")
+
+# Find ONNX Runtime includes
+set(ONNXRUNTIME_INCLUDE_DIR "${ONNXRUNTIME_PKG_ROOT}/include")
+if(NOT EXISTS ${ONNXRUNTIME_INCLUDE_DIR})
+  # Try alternative conda location
+  execute_process(
+    COMMAND ${Python_EXECUTABLE} -c "import os; print(os.environ.get('CONDA_PREFIX', ''))"
+    OUTPUT_VARIABLE CONDA_PREFIX
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+  set(ONNXRUNTIME_INCLUDE_DIR "${CONDA_PREFIX}/include/onnxruntime")
+endif()
+message(STATUS "ONNX Runtime include dir: ${ONNXRUNTIME_INCLUDE_DIR}")
+
+# Find ONNX Runtime library
+file(GLOB ONNXRUNTIME_LIB_FILES
+     "${ONNXRUNTIME_PKG_ROOT}/lib/libonnxruntime.so*"
+     "${CONDA_PREFIX}/lib/libonnxruntime.so*"
+)
+if(NOT ONNXRUNTIME_LIB_FILES)
+  message(FATAL_ERROR "Could not find libonnxruntime.so")
+endif()
+list(GET ONNXRUNTIME_LIB_FILES 0 ONNXRUNTIME_LIB)
+message(STATUS "Linking against ONNX Runtime library: ${ONNXRUNTIME_LIB}")
+
+include_directories(${ONNXRUNTIME_INCLUDE_DIR})
+
+# 4. Build the pybind11 module
+find_package(pybind11 REQUIRED)
+pybind11_add_module(_judo_cpp
+  bindings.cpp
+  onnx_rollout.cpp
+)
+execute_process(
+  COMMAND ${Python_EXECUTABLE} -c "import site; print(site.getsitepackages()[0])"
+  OUTPUT_VARIABLE SITE_PACKAGES_DIR
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)  # find the site-packages directory
+set_target_properties(_judo_cpp PROPERTIES
+  LIBRARY_OUTPUT_DIRECTORY "${SITE_PACKAGES_DIR}/judo_cpp"
+  BUILD_RPATH "$ORIGIN/../mujoco"
+  INSTALL_RPATH "$ORIGIN/../mujoco"
+  BUILD_RPATH_USE_ORIGIN TRUE
+)  # rebuild the bound module to the site-packages directory
+target_link_libraries(_judo_cpp PRIVATE
+  Eigen3::Eigen
+  OpenMP::OpenMP_CXX
+  ${MUJOCO_LIB}
+  ${ONNXRUNTIME_LIB}
+)
+
+# 5. Install the module
+install(TARGETS _judo_cpp DESTINATION judo_cpp)
