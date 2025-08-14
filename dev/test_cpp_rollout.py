@@ -29,8 +29,9 @@ full_states = np.concatenate([time.time() * np.ones((batch_size, 1)), x0_batched
 controls = np.random.randn(batch_size, time_steps, model.nu) * 0.1
 
 
-def mujoco_rollout(models, datas, full_states, controls):
-    for i in range(10):
+def mujoco_rollout(models: list, datas: list, full_states: np.ndarray, controls: np.ndarray) -> None:
+    """Test MuJoCo rollout performance."""
+    for _i in range(10):
         start_time = time.time()
         states_raw, sensors = rollout_obj.rollout(models, datas, full_states, controls)
         end_time = time.time()
@@ -47,8 +48,9 @@ def mujoco_rollout(models, datas, full_states, controls):
 # x0_batched = np.tile(x0, (batch_size, 1))
 
 
-def cpp_rollout(models, datas, x0_batched, controls):
-    for i in range(10):
+def cpp_rollout(models: list, datas: list, x0_batched: np.ndarray, controls: np.ndarray) -> None:
+    """Test C++ rollout performance."""
+    for _i in range(10):
         # controls = np.random.randn(batch_size, time_steps, model.nu) * 0.1
         start_time = time.time()
         states_cpp, sensors_cpp, inputs_cpp = judo_cpp.pure_cpp_rollout(models, datas, x0_batched, controls)

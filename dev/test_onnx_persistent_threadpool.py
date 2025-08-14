@@ -13,8 +13,8 @@ XML_PATH = str(MODEL_PATH / "xml/spot_locomotion.xml")
 ONNX_PATH = "identity_network_spot.onnx"  # Use the correct Spot identity network
 
 
-def comprehensive_onnx_performance_test():
-    """Test the persistent thread pool with ONNX interleaved rollouts"""
+def comprehensive_onnx_performance_test() -> None:
+    """Test the persistent thread pool with ONNX interleaved rollouts."""
     num_threads = 64
     batch_size = num_threads
     time_steps = 100
@@ -92,7 +92,7 @@ def comprehensive_onnx_performance_test():
         _ = judo_cpp.pure_cpp_rollout(models, datas, x0_batched, controls)
 
     pure_original_times = []
-    for i in range(10):
+    for _ in range(10):
         start_time = time.time()
         _ = judo_cpp.pure_cpp_rollout(models, datas, x0_batched, controls)
         end_time = time.time()
@@ -103,7 +103,7 @@ def comprehensive_onnx_performance_test():
         _ = judo_cpp.persistent_cpp_rollout(models, datas, x0_batched, controls)
 
     pure_persistent_times = []
-    for i in range(10):
+    for _ in range(10):
         start_time = time.time()
         _ = judo_cpp.persistent_cpp_rollout(models, datas, x0_batched, controls)
         end_time = time.time()
@@ -137,12 +137,11 @@ def comprehensive_onnx_performance_test():
     orig_overhead = original_onnx_times.mean() - pure_original_times.mean()
     pers_overhead = persistent_onnx_times.mean() - pure_persistent_times.mean()
 
-    print(
-        f"ONNX overhead (Original): {orig_overhead * 1000:.1f}ms ({orig_overhead / pure_original_times.mean() * 100:.1f}% increase)"
-    )
-    print(
-        f"ONNX overhead (Persistent): {pers_overhead * 1000:.1f}ms ({pers_overhead / pure_persistent_times.mean() * 100:.1f}% increase)"
-    )
+    orig_pct = orig_overhead / pure_original_times.mean() * 100
+    print(f"ONNX overhead (Original): {orig_overhead * 1000:.1f}ms ({orig_pct:.1f}% increase)")
+
+    pers_pct = pers_overhead / pure_persistent_times.mean() * 100
+    print(f"ONNX overhead (Persistent): {pers_overhead * 1000:.1f}ms ({pers_pct:.1f}% increase)")
 
     print("\n=== THREAD POOL BENEFITS ===")
     onnx_speedup = original_onnx_times.mean() / persistent_onnx_times.mean()
@@ -160,8 +159,8 @@ def comprehensive_onnx_performance_test():
     print(f"Results identical: {states_diff < 1e-10 and inferences_diff < 1e-10}")
 
 
-def test_pure_rollout_comparison():
-    """Fallback test if ONNX model is not available"""
+def test_pure_rollout_comparison() -> None:
+    """Fallback test if ONNX model is not available."""
     num_threads = 64
     batch_size = num_threads
     time_steps = 100

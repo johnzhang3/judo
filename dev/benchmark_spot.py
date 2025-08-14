@@ -22,6 +22,7 @@ except ImportError:
 
 try:
     import importlib.util
+
     judo_cpp_spec = importlib.util.find_spec("judo_cpp")
     JUDO_CPP_AVAILABLE = judo_cpp_spec is not None
 except ImportError:
@@ -105,11 +106,11 @@ def create_spot_identity_network(model: mujoco.MjModel) -> str:
 
 def benchmark_native_rollout(
     model: Any,  # noqa: ANN401
-    x0: np.ndarray, 
-    controls: np.ndarray, 
-    num_threads: int, 
-    num_trials: int, 
-    simple: bool
+    x0: np.ndarray,
+    controls: np.ndarray,
+    num_threads: int,
+    num_trials: int,
+    simple: bool,
 ) -> dict[str, Any]:
     """Benchmark native MuJoCo rollout."""
     batch_size = num_threads
@@ -177,10 +178,10 @@ def benchmark_native_rollout(
 
 def benchmark_cpp_rollout(
     model: Any,  # noqa: ANN401
-    x0: np.ndarray, 
-    controls: np.ndarray, 
-    num_threads: int, 
-    trials: int = 5
+    x0: np.ndarray,
+    controls: np.ndarray,
+    num_threads: int,
+    trials: int = 5,
 ) -> dict[str, Any]:
     """Benchmark pure C++ rollout without any Python or ONNX overhead."""
     # Import here to avoid dependency issues if not available
@@ -269,85 +270,6 @@ def benchmark_onnx_rollout(
     throughput = (num_threads * num_timesteps) / mean_time
 
     return {"mean": mean_time, "std": std_time, "throughput": throughput, "times": times, "error": False}
-    batch_size = num_threads
-
-    # Create model/data pairs
-    models = [deepcopy(model) for _ in range(batch_size)]
-    datas = [mujoco.MjData(m) for m in models]
-
-    # Warmup
-    if not simple:
-        print("  Warming up...")
-    for _ in range(3):
-        try:
-            judo_cpp.onnx_interleave_rollout(models, datas, x0, controls, onnx_path, inference_freq)
-        except Exception as e:
-            print(f"  Warning: Warmup failed: {e}")
-            break
-
-    # Benchmark
-    if not simple:
-        print("  Running benchmark...")
-    times = []
-
-    for trial in range(num_trials):
-        # Reset data for each trial
-        for data in datas:
-            data.time = 0.0
-            mujoco.mj_resetData(model, data)
-
-        start_time = time.time()
-        try:
-            result = judo_cpp.onnx_interleave_rollout(models, datas, x0, controls, onnx_path, inference_freq)
-            states, sensors, inputs, inferences = result
-            end_time = time.time()
-
-            elapsed = end_time - start_time
-            times.append(elapsed)
-
-            if trial == 0:  # Verify output shapes on first trial
-                if not simple:
-                    print(f"  Output shapes: states={states.shape}, sensors={sensors.shape}")
-                    print(f"  Inference shapes: inferences={inferences.shape}")
-
-        except Exception as e:
-            print(f"  Error in trial {trial}: {e}")
-            times.append(float("inf"))
-
-    # Calculate statistics
-    valid_times = [t for t in times if np.isfinite(t)]
-    if not valid_times:
-        return {
-            "type": "onnx",
-            "inference_freq": inference_freq,
-            "mean": float("inf"),
-            "std": float("inf"),
-            "throughput": 0,
-            "batch_size": batch_size,
-            "num_threads": num_threads,
-            "error": True,
-        }
-
-    times = np.array(valid_times)
-    mean_time = np.mean(times)
-    std_time = np.std(times)
-    throughput = batch_size * controls.shape[1] / mean_time
-
-    result = {
-        "type": "onnx",
-        "inference_freq": inference_freq,
-        "mean": mean_time,
-        "std": std_time,
-        "throughput": throughput,
-        "batch_size": batch_size,
-        "num_threads": num_threads,
-        "error": False,
-    }
-
-    print(f"  Mean time: {mean_time:.4f} ± {std_time:.4f}s")
-    print(f"  Throughput: {throughput:.1f} steps/second")
-
-    return result
 
 
 def print_comparison_summary(

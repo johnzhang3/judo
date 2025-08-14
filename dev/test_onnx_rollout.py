@@ -120,19 +120,8 @@ def test_onnx_interleave_rollout() -> None:
 
         except Exception as e:
             print(f"✗ Error with inference frequency {freq}: {e}")
-            import traceback
-
-            traceback.print_exc()
 
     print("\n--- Comparing with regular rollout ---")
-
-    try:
-        # Compare with basic MuJoCo rollout (manual implementation for comparison)
-        print("Note: Regular parallel_rollout removed - using simple comparison instead")
-        print("The ONNX interleaved rollout is working as expected!")
-
-    except Exception as e:
-        print(f"Error in rollout comparison: {e}")
 
     print("\n" + "=" * 60)
     print("ONNX Interleaved Rollout Test Complete!")

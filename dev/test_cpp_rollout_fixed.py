@@ -17,9 +17,11 @@ batch_size = num_threads
 time_steps = 100
 
 
-def mujoco_rollout(models, datas, full_states, controls):
+def mujoco_rollout(models: list, datas: list, full_states: np.ndarray, controls: np.ndarray) -> None:
+    """Test MuJoCo rollout performance."""
+    """Run Mujoco rollout."""
     rollout_obj = Rollout(nthread=num_threads)
-    for i in range(10):
+    for _i in range(10):
         start_time = time.time()
         states_raw, sensors = rollout_obj.rollout(models, datas, full_states, controls)
         end_time = time.time()
@@ -29,8 +31,10 @@ def mujoco_rollout(models, datas, full_states, controls):
     return states
 
 
-def cpp_rollout(models, datas, x0_batched, controls):
-    for i in range(10):
+def cpp_rollout(models: list, datas: list, x0_batched: np.ndarray, controls: np.ndarray) -> None:
+    """Test C++ rollout performance."""
+    """Run C++ rollout."""
+    for _ in range(10):
         start_time = time.time()
         states_cpp, sensors_cpp, inputs_cpp = judo_cpp.pure_cpp_rollout(models, datas, x0_batched, controls)
         end_time = time.time()
@@ -38,7 +42,9 @@ def cpp_rollout(models, datas, x0_batched, controls):
     return states_cpp
 
 
-def create_test_data():
+def create_test_data() -> tuple:
+    """Create test data for benchmarking."""
+    """Create test data for Mujoco rollout."""
     model = mujoco.MjModel.from_xml_path(XML_PATH)
     models = [deepcopy(model) for _ in range(batch_size)]
     datas = [mujoco.MjData(m) for m in models]

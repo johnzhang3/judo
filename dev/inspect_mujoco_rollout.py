@@ -11,7 +11,7 @@ print("Methods:", [m for m in dir(mujoco.rollout.Rollout) if not m.startswith("_
 try:
     source = inspect.getsource(mujoco.rollout.Rollout)
     print("Source available:", len(source), "characters")
-except:
+except Exception:  # noqa: S110
     print("Source not available (compiled)")
 
 # Check the rollout method specifically
@@ -19,5 +19,5 @@ try:
     rollout_source = inspect.getsource(mujoco.rollout.Rollout.rollout)
     print("Rollout method source:")
     print(rollout_source[:500], "..." if len(rollout_source) > 500 else "")
-except:
+except Exception:  # noqa: S110
     print("Rollout method source not available (compiled)")

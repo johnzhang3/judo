@@ -13,8 +13,8 @@ from judo import MODEL_PATH
 XML_PATH = str(MODEL_PATH / "xml/spot_locomotion.xml")
 
 
-def final_performance_comparison():
-    """Final performance comparison with corrected methodology"""
+def final_performance_comparison() -> None:
+    """Final performance comparison with corrected methodology."""
     num_threads = 64
     batch_size = num_threads
     time_steps = 100
@@ -47,7 +47,7 @@ def final_performance_comparison():
         _ = rollout_obj.rollout(models, datas, full_states, controls)
 
     python_times = []
-    for i in range(20):
+    for _ in range(20):
         start_time = time.time()
         states_raw, sensors = rollout_obj.rollout(models, datas, full_states, controls)
         end_time = time.time()
@@ -62,7 +62,7 @@ def final_performance_comparison():
         _ = judo_cpp.pure_cpp_rollout(models, datas, x0_batched, controls)
 
     cpp_original_times = []
-    for i in range(20):
+    for _ in range(20):
         start_time = time.time()
         states_cpp, sensors_cpp, inputs_cpp = judo_cpp.pure_cpp_rollout(models, datas, x0_batched, controls)
         end_time = time.time()
@@ -77,7 +77,7 @@ def final_performance_comparison():
         _ = judo_cpp.persistent_cpp_rollout(models, datas, x0_batched, controls)
 
     cpp_persistent_times = []
-    for i in range(20):
+    for _ in range(20):
         start_time = time.time()
         states_persistent, sensors_persistent, inputs_persistent = judo_cpp.persistent_cpp_rollout(
             models, datas, x0_batched, controls
@@ -138,7 +138,7 @@ def final_performance_comparison():
 
     # Verify correctness
     states_python = np.array(states_raw)[..., 1:]  # Remove time column
-    diff_orig = np.linalg.norm(states_python - states_cpp)
+    np.linalg.norm(states_python - states_cpp)
     diff_pers = np.linalg.norm(states_python - states_persistent)
     print(f"✓ Results identical (diff < 1e-10): {diff_pers < 1e-10}")
 

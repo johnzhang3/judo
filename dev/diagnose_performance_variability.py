@@ -14,8 +14,8 @@ from judo import MODEL_PATH
 XML_PATH = str(MODEL_PATH / "xml/spot_locomotion.xml")
 
 
-def get_system_info():
-    """Get current system performance indicators"""
+def get_system_info() -> dict[str, float]:
+    """Get current system performance indicators."""
     cpu_percent = psutil.cpu_percent(interval=1)
     memory = psutil.virtual_memory()
     load_avg = os.getloadavg()
@@ -29,14 +29,14 @@ def get_system_info():
         freq = psutil.cpu_freq()
         if freq:
             print(f"CPU Frequency: {freq.current:.0f}MHz (max: {freq.max:.0f}MHz)")
-    except:
+    except Exception:  # noqa: S110
         pass
 
     return {"cpu_percent": cpu_percent, "memory_percent": memory.percent, "load_avg": load_avg[0]}
 
 
-def run_cpp_benchmark(num_iterations=20):
-    """Run a controlled C++ benchmark with system monitoring"""
+def run_cpp_benchmark(num_iterations: int = 20) -> None:
+    """Run a controlled C++ benchmark with system monitoring."""
     # Setup
     num_threads = 64
     batch_size = num_threads

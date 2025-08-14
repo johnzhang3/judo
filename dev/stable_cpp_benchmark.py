@@ -12,8 +12,8 @@ from judo import MODEL_PATH
 XML_PATH = str(MODEL_PATH / "xml/spot_locomotion.xml")
 
 
-def warm_up_system():
-    """Warm up CPU and system to reach stable performance state"""
+def warm_up_system() -> None:
+    """Warm up CPU and system to reach stable performance state."""
     print("Warming up system...")
 
     # Create minimal workload to boost CPU frequency
@@ -27,8 +27,8 @@ def warm_up_system():
     print("System warmed up.")
 
 
-def run_stable_benchmark():
-    """Run benchmark with warm-up and statistical robustness"""
+def run_stable_benchmark() -> None:
+    """Run benchmark with warm-up and statistical robustness."""
     # Setup
     num_threads = 64
     batch_size = num_threads
@@ -48,7 +48,7 @@ def run_stable_benchmark():
 
     # 2. Benchmark warm-up (don't measure these)
     print("Warming up benchmark...")
-    for i in range(10):
+    for _ in range(10):
         _ = judo_cpp.pure_cpp_rollout(models, datas, x0_batched, controls)
         time.sleep(0.05)  # Brief pause
 

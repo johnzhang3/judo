@@ -13,8 +13,8 @@ from judo import MODEL_PATH
 XML_PATH = str(MODEL_PATH / "xml/spot_locomotion.xml")
 
 
-def test_threadpool_hypothesis():
-    """Test if threadpool management affects performance stability"""
+def test_threadpool_hypothesis() -> None:
+    """Test if threadpool management affects performance stability."""
     num_threads = 64
     batch_size = num_threads
     time_steps = 100

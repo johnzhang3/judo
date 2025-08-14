@@ -13,8 +13,8 @@ from judo import MODEL_PATH
 XML_PATH = str(MODEL_PATH / "xml/spot_locomotion.xml")
 
 
-def test_persistent_thread_pool():
-    """Test the new persistent thread pool implementation vs original C++ and Python"""
+def test_persistent_thread_pool() -> None:
+    """Test the new persistent thread pool implementation vs original C++ and Python."""
     num_threads = 64
     batch_size = num_threads
     time_steps = 100

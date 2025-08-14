@@ -12,8 +12,8 @@ from judo import MODEL_PATH
 XML_PATH = str(MODEL_PATH / "xml/spot_locomotion.xml")
 
 
-def diagnose_persistent_threadpool():
-    """Diagnose why persistent thread pool shows instability"""
+def diagnose_persistent_threadpool() -> None:
+    """Diagnose why persistent thread pool shows instability."""
     num_threads = 64
     batch_size = num_threads
     time_steps = 100

@@ -13,8 +13,8 @@ from judo import MODEL_PATH
 XML_PATH = str(MODEL_PATH / "xml/spot_locomotion.xml")
 
 
-def warm_up_system():
-    """Warm up CPU and system to reach stable performance state"""
+def warm_up_system() -> None:
+    """Warm up CPU and system to reach stable performance state."""
     print("Warming up system...")
     for _ in range(5):
         _ = np.random.randn(1000, 1000) @ np.random.randn(1000, 1000)
@@ -23,8 +23,8 @@ def warm_up_system():
     print("System warmed up.")
 
 
-def benchmark_python_rollout():
-    """Benchmark Python (mujoco.rollout.Rollout) version"""
+def benchmark_python_rollout() -> np.ndarray:
+    """Benchmark Python (mujoco.rollout.Rollout) version."""
     print("\n=== Python Rollout Benchmark ===")
 
     num_threads = 64
@@ -64,8 +64,8 @@ def benchmark_python_rollout():
     return np.array(times)
 
 
-def benchmark_cpp_rollout():
-    """Benchmark C++ (judo_cpp.pure_cpp_rollout) version"""
+def benchmark_cpp_rollout() -> np.ndarray:
+    """Benchmark C++ (judo_cpp.pure_cpp_rollout) version."""
     print("\n=== C++ Rollout Benchmark ===")
 
     num_threads = 64
@@ -103,13 +103,13 @@ def benchmark_cpp_rollout():
     return np.array(times)
 
 
-def analyze_timing_differences():
-    """Analyze what might cause timing differences"""
+def analyze_timing_differences() -> None:
+    """Analyze what might cause timing differences."""
     print("\n=== Analyzing Timing Overhead ===")
 
     # Test just the Python call overhead
     python_overhead_times = []
-    for i in range(100):
+    for _i in range(100):
         start = time.time()
         # Just call time.time() with minimal work
         _ = np.array([1.0])
@@ -125,12 +125,12 @@ def analyze_timing_differences():
         cpp_overhead_times = []
         dummy_array = np.array([1.0])
 
-        for i in range(100):
+        for _i in range(100):
             start = time.time()
             # This will fail, but we can measure the binding call overhead
             try:
                 _ = len(dummy_array)  # Minimal numpy operation
-            except:
+            except Exception:  # noqa: S110
                 pass
             end = time.time()
             cpp_overhead_times.append(end - start)
@@ -139,12 +139,12 @@ def analyze_timing_differences():
         print(
             f"Minimal operation overhead: {cpp_overhead.mean() * 1e6:.1f} ± {cpp_overhead.std() * 1e6:.1f} microseconds"
         )
-    except:
+    except Exception:  # noqa: S110
         print("Could not measure C++ binding overhead")
 
 
-def compare_implementations():
-    """Compare Python vs C++ rollout implementations"""
+def compare_implementations() -> None:
+    """Compare Python vs C++ rollout implementations."""
     warm_up_system()
 
     # Run benchmarks

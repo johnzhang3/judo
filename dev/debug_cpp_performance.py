@@ -20,8 +20,8 @@ time_steps = 100
 model = mujoco.MjModel.from_xml_path(XML_PATH)
 
 
-def test_fresh_models():
-    """Test C++ rollout with fresh models/data"""
+def test_fresh_models() -> None:
+    """Test C++ rollout with fresh models/data."""
     print("=== Testing with FRESH models/data ===")
     models = [deepcopy(model) for _ in range(batch_size)]
     datas = [mujoco.MjData(m) for m in models]
@@ -31,15 +31,15 @@ def test_fresh_models():
     x0_batched = np.tile(x0, (batch_size, 1))
     controls = np.random.randn(batch_size, time_steps, model.nu) * 0.1
 
-    for i in range(5):
+    for _i in range(5):
         start_time = time.time()
         states_cpp, sensors_cpp, inputs_cpp = judo_cpp.pure_cpp_rollout(models, datas, x0_batched, controls)
         end_time = time.time()
         print(f"Fresh C++ Rollout time: {end_time - start_time:.4f}")
 
 
-def test_reused_models():
-    """Test C++ rollout with reused models/data (after Python rollout)"""
+def test_reused_models() -> None:
+    """Test C++ rollout with reused models/data (after Python rollout)."""
     print("\n=== Testing with REUSED models/data (after Python rollout) ===")
     from mujoco.rollout import Rollout
 
@@ -59,7 +59,7 @@ def test_reused_models():
 
     # Now test C++ rollout with the modified datas
     print("Now running C++ rollout with same models/datas...")
-    for i in range(5):
+    for _i in range(5):
         start_time = time.time()
         states_cpp, sensors_cpp, inputs_cpp = judo_cpp.pure_cpp_rollout(models, datas, x0_batched, controls)
         end_time = time.time()
