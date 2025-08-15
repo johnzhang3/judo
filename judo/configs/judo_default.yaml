@@ -1,6 +1,7 @@
 # task: cylinder_push
 # task: spot_locomotion
-task: fr3_ball
+task: spot_door_box
+# task: fr3_ball
 optimizer: cem
 
 dataflow:
