@@ -1,0 +1,33 @@
+# Example configuration demonstrating different rollout backends
+
+defaults:
+  - judo_default
+
+# Override backend for specific tasks
+controller_config_overrides:
+  # Cartpole task with C++ backend
+  cartpole:
+    rollout_backend: "cpp_persistent"
+    horizon: 1.0
+
+  # Spot door box task with C++ backend
+  spot_door_box:
+    rollout_backend: "cpp_persistent"
+    horizon: 2.0
+
+  # Example of using different backends for different tasks
+  fr3_pick:
+    rollout_backend: "cpp"
+    horizon: 1.5
+
+  # MuJoCo backend (default)
+  leap_cube:
+    rollout_backend: "mujoco"
+    horizon: 1.0
+
+# Available backends in pixi dev environment:
+# - mujoco: Default MuJoCo threaded rollouts
+# - cpp: Pure C++ rollout implementation
+# - cpp_persistent: C++ rollout with persistent thread pool (recommended)
+# - onnx: C++ rollout with ONNX inference (requires onnx model configuration)
+# - onnx_persistent: C++ rollout with ONNX and persistent thread pool (requires onnx model)

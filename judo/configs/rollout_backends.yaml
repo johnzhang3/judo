@@ -1,0 +1,24 @@
+# Example configuration showing how to use different rollout backends
+
+defaults:
+  - judo
+
+# You can test different backends by changing this configuration
+controller_config_overrides:
+  # For spot_door_box task, use C++ persistent backend
+  spot_door_box:
+    rollout_backend: "cpp_persistent"
+
+  # For other tasks, you can specify different backends
+  # spot_locomotion:
+  #   rollout_backend: "cpp"
+
+  # cylinder_push:
+  #   rollout_backend: "mujoco"  # Default backend
+
+  # For ONNX backends, you would need additional configuration
+  # (This would require extending the controller to handle ONNX model paths)
+  # fr3_ball:
+  #   rollout_backend: "onnx_persistent"
+
+# Note: Make sure judo_cpp is compiled and available if using cpp/onnx backends

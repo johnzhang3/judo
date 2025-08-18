@@ -34,6 +34,7 @@ class ControllerConfig(OverridableConfig):
     max_opt_iters: int = 1
     max_num_traces: int = 5
     action_normalizer: Literal["none", "min_max", "running"] = "none"
+    rollout_backend: Literal["mujoco", "cpp", "cpp_persistent", "onnx", "onnx_persistent"] = "mujoco"
 
 
 class Controller:
@@ -46,7 +47,6 @@ class Controller:
         task_config: TaskConfig,
         optimizer: Optimizer,
         optimizer_config: OptimizerConfig,
-        rollout_backend: Literal["mujoco"] = "mujoco",
     ) -> None:
         """Initialize the controller.
 
@@ -56,9 +56,8 @@ class Controller:
             task_config: The configuration for the task.
             optimizer: The optimizer object that will be used for optimization.
             optimizer_config: The configuration for the optimizer.
-            rollout_backend: The backend to use for rollouts. Currently only "mujoco" is supported.
         """
-        self.controller_cfg = controller_config
+        self._controller_cfg = controller_config
 
         self.task = task
         self.task_cfg = task_config
@@ -69,7 +68,10 @@ class Controller:
         self.model = task.model
         self.model_data_pairs = make_model_data_pairs(self.model, self.optimizer_cfg.num_rollouts)
 
-        self.rollout_backend = RolloutBackend(num_threads=self.optimizer_cfg.num_rollouts, backend=rollout_backend)
+        # Use the backend from controller config
+        self.rollout_backend = RolloutBackend(
+            num_threads=self.optimizer_cfg.num_rollouts, backend=controller_config.rollout_backend
+        )
 
         self.action_normalizer = self._init_action_normalizer()
 
@@ -88,6 +90,29 @@ class Controller:
         self.num_trace_sensors = len(self.trace_sensors)
         self.sensor_rollout_size = self.num_timesteps - 1
         self.all_traces_rollout_size = self.sensor_rollout_size * self.num_trace_sensors
+
+    @property
+    def controller_cfg(self) -> ControllerConfig:
+        """Get the controller configuration."""
+        return self._controller_cfg
+
+    @controller_cfg.setter
+    def controller_cfg(self, new_config: ControllerConfig) -> None:
+        """Set the controller configuration and update rollout backend if needed."""
+        current_backend_type = (
+            getattr(self.rollout_backend, "backend", None) if hasattr(self, "rollout_backend") else None
+        )
+
+        self._controller_cfg = new_config
+
+        # Update rollout backend if the backend type changed
+        if current_backend_type != new_config.rollout_backend:
+            old_rollout_backend = getattr(self, "rollout_backend", None)
+            if old_rollout_backend:
+                old_rollout_backend.shutdown()
+            self.rollout_backend = RolloutBackend(
+                num_threads=self.optimizer_cfg.num_rollouts, backend=new_config.rollout_backend
+            )
 
     @property
     def horizon(self) -> float:

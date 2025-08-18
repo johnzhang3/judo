@@ -1,0 +1,9 @@
+defaults:
+  - judo_default
+
+task: "cartpole"
+optimizer: "cem"
+
+controller_config_overrides:
+  cartpole:
+    rollout_backend: "cpp"
