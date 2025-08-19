@@ -1,0 +1,16 @@
+# Example configuration showing how to use different rollout backends
+
+defaults:
+  - judo
+
+# You can test different backends by changing this configuration
+controller_config_overrides:
+  # For spot_locomotion task, use ONNX persistent backend (should work now!)
+  spot_locomotion:
+    rollout_backend: "onnx_persistent"
+    onnx_model_path: "identity_network_spot.onnx"
+    onnx_inference_frequency: 5
+
+  # Backup working configuration
+  # spot_locomotion:
+  #   rollout_backend: "cpp_persistent"  # This works without dimension issues

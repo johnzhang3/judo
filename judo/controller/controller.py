@@ -36,6 +36,10 @@ class ControllerConfig(OverridableConfig):
     action_normalizer: Literal["none", "min_max", "running"] = "none"
     rollout_backend: Literal["mujoco", "cpp", "cpp_persistent", "onnx", "onnx_persistent"] = "mujoco"
 
+    # ONNX configuration fields
+    onnx_model_path: str | None = None
+    onnx_inference_frequency: int = 1
+
 
 class Controller:
     """The controller object."""
@@ -113,6 +117,18 @@ class Controller:
             self.rollout_backend = RolloutBackend(
                 num_threads=self.optimizer_cfg.num_rollouts, backend=new_config.rollout_backend
             )
+
+            # Configure ONNX if needed
+            if new_config.rollout_backend in ["onnx", "onnx_persistent"]:
+                if new_config.onnx_model_path:
+                    self.rollout_backend.set_onnx_config(
+                        new_config.onnx_model_path, new_config.onnx_inference_frequency
+                    )
+                else:
+                    raise ValueError(
+                        f"ONNX model path must be specified for {new_config.rollout_backend} backend. "
+                        f"Set 'onnx_model_path' in your configuration."
+                    )
 
     @property
     def horizon(self) -> float:

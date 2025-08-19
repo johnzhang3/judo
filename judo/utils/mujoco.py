@@ -150,8 +150,24 @@ class RolloutBackend:
             assert controls.shape[0] == x0_batched.shape[0]
 
             # rollout returns (states, sensors, inputs, inferences)
-            result = self.rollout_func(ms, ds, x0_batched, controls, self.onnx_model_path, self.inference_frequency)
-            out_states, out_sensors = np.array(result[0]), np.array(result[1])
+            try:
+                result = self.rollout_func(ms, ds, x0_batched, controls, self.onnx_model_path, self.inference_frequency)
+                out_states, out_sensors = np.array(result[0]), np.array(result[1])
+            except Exception as e:
+                if "Got invalid dimensions" in str(e) or "incompatible function arguments" in str(e):
+                    expected_dim = nq + nv
+                    raise ValueError(
+                        f"ONNX model issue:\n"
+                        f"  Current simulation state size: {expected_dim}\n"
+                        f"  ONNX model: {self.onnx_model_path}\n"
+                        f"  Original error: {e}\n\n"
+                        f"Solutions:\n"
+                        f"  1. Use a different backend: rollout_backend: 'cpp_persistent'\n"
+                        f"  2. Use an ONNX model that matches this task's state dimensions\n"
+                        f"  3. Test with a different task that matches the model dimensions"
+                    ) from e
+                else:
+                    raise
 
         else:
             raise ValueError(f"Unknown backend: {self.backend}")

@@ -166,14 +166,6 @@ ONNXInference::ONNXInference(const std::string& model_path) {
             output_shape_ = output_tensor_info.GetShape();
         }
 
-        std::cout << "ONNX model loaded successfully" << std::endl;
-        std::cout << "Input shape: [";
-        for (size_t i = 0; i < input_shape_.size(); ++i) {
-            std::cout << input_shape_[i];
-            if (i < input_shape_.size() - 1) std::cout << ", ";
-        }
-        std::cout << "]" << std::endl;
-
     } catch (const Ort::Exception& e) {
         throw std::runtime_error("Failed to load ONNX model: " + std::string(e.what()));
     }

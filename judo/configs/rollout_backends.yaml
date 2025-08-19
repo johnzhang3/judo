@@ -5,20 +5,18 @@ defaults:
 
 # You can test different backends by changing this configuration
 controller_config_overrides:
-  # For spot_door_box task, use C++ persistent backend
+  # For spot_door_box task, use C++ persistent backend (no ONNX issues)
   spot_door_box:
-    rollout_backend: "cpp_persistent"
+    rollout_backend: "cpp_persistent"  # Fast and reliable
 
-  # For other tasks, you can specify different backends
-  # spot_locomotion:
-  #   rollout_backend: "cpp"
+  # Alternative: Test ONNX with a different task that matches the model
+  # cartpole:
+  #   rollout_backend: "onnx"
+  #   onnx_model_path: "identity_network_pendulum.onnx"
+  #   onnx_inference_frequency: 1
 
-  # cylinder_push:
-  #   rollout_backend: "mujoco"  # Default backend
-
-  # For ONNX backends, you would need additional configuration
-  # (This would require extending the controller to handle ONNX model paths)
-  # fr3_ball:
+  # If you want to test ONNX with spot, you'd need a model trained for 66-dim input
+  # spot_door_box:
   #   rollout_backend: "onnx_persistent"
-
-# Note: Make sure judo_cpp is compiled and available if using cpp/onnx backends
+  #   onnx_model_path: "identity_network_spot.onnx"  # This expects 51-dim, not 66-dim
+  #   onnx_inference_frequency: 5
