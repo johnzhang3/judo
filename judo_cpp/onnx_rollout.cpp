@@ -709,3 +709,365 @@ py::tuple PersistentONNXInterleaveRollout(
 
     return py::make_tuple(states_arr, sens_arr, inputs_arr, inference_arr);
 }
+// ========== Policy-Driven Rollout Functions ==========
+// Add this code to the end of onnx_rollout.cpp
+
+py::tuple ONNXPolicyRollout(
+    const std::vector<const mjModel*>& models,
+    const std::vector<mjData*>&        data,
+    const py::array_t<double>&         x0,
+    int                                horizon,
+    const std::string&                 onnx_model_path,
+    int                                state_history_length,
+    int                                action_history_length,
+    int                                inference_frequency,
+    const py::array_t<double>&         additional_inputs
+) {
+    int B = (int)models.size();
+    if (B == 0 || B != (int)data.size()) {
+        throw std::runtime_error("models/data must have same non-zero length");
+    }
+
+    // dims from first model
+    const mjModel* m0 = models[0];
+    int nq     = m0->nq;
+    int nv     = m0->nv;
+    int nu     = m0->nu;
+    int nsens  = m0->nsensordata;
+    int nstate = nq + nv;
+
+    // x0: 2D of shape (B, nstate) for batched initial states
+    if (x0.ndim() != 2 || x0.shape(0) != B || x0.shape(1) != nstate) {
+        throw std::runtime_error("x0 must be a 2D array of shape (B, nq+nv)");
+    }
+    const double* x0_ptr = x0.data();
+
+    // Parse additional inputs
+    std::vector<double> additional_input_data;
+    int additional_input_dim = 0;
+    if (additional_inputs.size() > 0) {
+        if (additional_inputs.ndim() == 2 && additional_inputs.shape(0) == B) {
+            additional_input_dim = additional_inputs.shape(1);
+            additional_input_data.resize(B * additional_input_dim);
+            std::memcpy(additional_input_data.data(), additional_inputs.data(),
+                       B * additional_input_dim * sizeof(double));
+        } else if (additional_inputs.ndim() == 1) {
+            // Broadcast to all rollouts
+            additional_input_dim = additional_inputs.shape(0);
+            additional_input_data.resize(B * additional_input_dim);
+            for (int b = 0; b < B; ++b) {
+                std::memcpy(&additional_input_data[b * additional_input_dim],
+                           additional_inputs.data(), additional_input_dim * sizeof(double));
+            }
+        } else {
+            throw std::runtime_error("additional_inputs must be 1D or 2D array");
+        }
+    }
+
+    // allocate outputs
+    std::vector<double> states_buf(B * (horizon + 1) * nstate);  // +1 for initial state
+    std::vector<double> actions_buf(B * horizon * nu);
+    std::vector<double> sens_buf(B * horizon * nsens);
+
+    // Create thread-local ONNX models and states
+    std::vector<std::unique_ptr<ONNXInference>> onnx_models(B);
+    std::vector<PolicyThreadState> thread_states;
+    thread_states.reserve(B);
+
+    {
+        py::gil_scoped_release release;
+
+        // Initialize thread states
+        for (int i = 0; i < B; i++) {
+            thread_states.emplace_back(state_history_length, action_history_length, nstate, nu);
+            thread_states[i].initialize_onnx_model(onnx_model_path);
+            thread_states[i].inference_frequency = inference_frequency;
+        }
+
+        #pragma omp parallel for
+        for (int i = 0; i < B; i++) {
+            try {
+                mjData* d = data[i];
+                PolicyThreadState& thread_state = thread_states[i];
+
+                // set initial qpos+qvel for this batch
+                d->time = 0.0;
+                const double* x0_i = x0_ptr + i * nstate;
+                mj_setState(models[i], d, x0_i, mjSTATE_QPOS | mjSTATE_QVEL);
+                mj_forward(models[i], d);
+                mju_zero(d->qacc_warmstart, m0->nv);
+
+                double* st_ptr = &states_buf[i * (horizon + 1) * nstate];
+                double* act_ptr = &actions_buf[i * horizon * nu];
+                double* se_ptr = &sens_buf[i * horizon * nsens];
+
+                // Store initial state
+                for (int j = 0; j < nq; j++) st_ptr[j] = d->qpos[j];
+                for (int j = 0; j < nv; j++) st_ptr[nq + j] = d->qvel[j];
+
+                // Add initial state to history
+                std::vector<double> current_state(nstate);
+                for (int j = 0; j < nq; j++) current_state[j] = d->qpos[j];
+                for (int j = 0; j < nv; j++) current_state[nq + j] = d->qvel[j];
+                thread_state.state_history.push(current_state);
+
+                for (int t = 0; t < horizon; t++) {
+                    std::vector<double> action(nu, 0.0);  // Default zero action
+
+                    // Run ONNX inference to get action
+                    if (inference_frequency > 0 && (t + 1) % inference_frequency == 0) {
+                        // Prepare additional inputs for this rollout
+                        std::vector<double> addl_inputs;
+                        if (additional_input_dim > 0) {
+                            addl_inputs.assign(
+                                &additional_input_data[i * additional_input_dim],
+                                &additional_input_data[(i + 1) * additional_input_dim]
+                            );
+                        }
+
+                        // Get ONNX input (state history + action history + additional inputs)
+                        std::vector<float> onnx_input = thread_state.prepare_onnx_input(addl_inputs);
+
+                        // Run inference
+                        std::vector<int64_t> input_shape = {1, (int64_t)onnx_input.size()};
+                        std::vector<float> onnx_output = thread_state.onnx_model->run_inference(onnx_input, input_shape);
+
+                        // Extract action from ONNX output (assuming action is the output)
+                        for (int j = 0; j < nu && j < (int)onnx_output.size(); j++) {
+                            action[j] = static_cast<double>(onnx_output[j]);
+                        }
+                    }
+                    // else: use default zero action
+
+                    // Apply action to simulation
+                    for (int j = 0; j < nu; j++) {
+                        d->ctrl[j] = action[j];
+                    }
+
+                    // Step simulation
+                    mj_step(models[i], d);
+
+                    // Record new state
+                    for (int j = 0; j < nq; j++) current_state[j] = d->qpos[j];
+                    for (int j = 0; j < nv; j++) current_state[nq + j] = d->qvel[j];
+
+                    // Store in output buffers
+                    for (int j = 0; j < nstate; j++) {
+                        st_ptr[(t + 1) * nstate + j] = current_state[j];
+                    }
+                    for (int j = 0; j < nu; j++) {
+                        act_ptr[t * nu + j] = action[j];
+                    }
+                    for (int j = 0; j < nsens; j++) {
+                        se_ptr[t * nsens + j] = d->sensordata[j];
+                    }
+
+                    // Update histories for next iteration
+                    thread_state.state_history.push(current_state);
+                    thread_state.action_history.push(action);
+                }
+
+            } catch (const std::exception& e) {
+                std::cerr << "Error in policy rollout thread " << i << ": " << e.what() << std::endl;
+                // Fill with zeros as fallback
+                double* st_ptr = &states_buf[i * (horizon + 1) * nstate];
+                double* act_ptr = &actions_buf[i * horizon * nu];
+                double* se_ptr = &sens_buf[i * horizon * nsens];
+
+                for (int t = 0; t <= horizon; t++) {
+                    for (int j = 0; j < nstate; j++) {
+                        st_ptr[t * nstate + j] = 0.0;
+                    }
+                }
+                for (int t = 0; t < horizon; t++) {
+                    for (int j = 0; j < nu; j++) act_ptr[t * nu + j] = 0.0;
+                    for (int j = 0; j < nsens; j++) se_ptr[t * nsens + j] = 0.0;
+                }
+            }
+        }
+    }
+
+    auto states_arr = make_array(states_buf, B, horizon + 1, nstate);
+    auto actions_arr = make_array(actions_buf, B, horizon, nu);
+    auto sens_arr = make_array(sens_buf, B, horizon, nsens);
+
+    return py::make_tuple(states_arr, actions_arr, sens_arr);
+}
+
+py::tuple PersistentONNXPolicyRollout(
+    const std::vector<const mjModel*>& models,
+    const std::vector<mjData*>&        data,
+    const py::array_t<double>&         x0,
+    int                                horizon,
+    const std::string&                 onnx_model_path,
+    int                                state_history_length,
+    int                                action_history_length,
+    int                                inference_frequency,
+    const py::array_t<double>&         additional_inputs
+) {
+    int B = (int)models.size();
+    if (B == 0 || B != (int)data.size()) {
+        throw std::runtime_error("models/data must have same non-zero length");
+    }
+
+    // dims from first model
+    const mjModel* m0 = models[0];
+    int nq     = m0->nq;
+    int nv     = m0->nv;
+    int nu     = m0->nu;
+    int nsens  = m0->nsensordata;
+    int nstate = nq + nv;
+
+    // x0: 2D of shape (B, nstate) for batched initial states
+    if (x0.ndim() != 2 || x0.shape(0) != B || x0.shape(1) != nstate) {
+        throw std::runtime_error("x0 must be a 2D array of shape (B, nq+nv)");
+    }
+    const double* x0_ptr = x0.data();
+
+    // Parse additional inputs
+    std::vector<double> additional_input_data;
+    int additional_input_dim = 0;
+    if (additional_inputs.size() > 0) {
+        if (additional_inputs.ndim() == 2 && additional_inputs.shape(0) == B) {
+            additional_input_dim = additional_inputs.shape(1);
+            additional_input_data.resize(B * additional_input_dim);
+            std::memcpy(additional_input_data.data(), additional_inputs.data(),
+                       B * additional_input_dim * sizeof(double));
+        } else if (additional_inputs.ndim() == 1) {
+            // Broadcast to all rollouts
+            additional_input_dim = additional_inputs.shape(0);
+            additional_input_data.resize(B * additional_input_dim);
+            for (int b = 0; b < B; ++b) {
+                std::memcpy(&additional_input_data[b * additional_input_dim],
+                           additional_inputs.data(), additional_input_dim * sizeof(double));
+            }
+        } else {
+            throw std::runtime_error("additional_inputs must be 1D or 2D array");
+        }
+    }
+
+    // allocate outputs
+    std::vector<double> states_buf(B * (horizon + 1) * nstate);
+    std::vector<double> actions_buf(B * horizon * nu);
+    std::vector<double> sens_buf(B * horizon * nsens);
+
+    {
+        py::gil_scoped_release release;
+
+        // Use persistent thread pool
+        PersistentThreadPool* pool = ThreadPoolManager::instance().get_pool(B);
+
+        pool->execute_parallel([&](int i) {
+            try {
+                // Get thread-local state
+                PolicyThreadState* thread_state = PolicyThreadStateManager::instance()
+                    .get_thread_state(nstate, nu, state_history_length, action_history_length);
+
+                thread_state->reset();
+                thread_state->initialize_onnx_model(onnx_model_path);
+                thread_state->inference_frequency = inference_frequency;
+
+                mjData* d = data[i];
+
+                // set initial qpos+qvel for this batch
+                d->time = 0.0;
+                const double* x0_i = x0_ptr + i * nstate;
+                mj_setState(models[i], d, x0_i, mjSTATE_QPOS | mjSTATE_QVEL);
+                mj_forward(models[i], d);
+                mju_zero(d->qacc_warmstart, m0->nv);
+
+                double* st_ptr = &states_buf[i * (horizon + 1) * nstate];
+                double* act_ptr = &actions_buf[i * horizon * nu];
+                double* se_ptr = &sens_buf[i * horizon * nsens];
+
+                // Store initial state
+                for (int j = 0; j < nq; j++) st_ptr[j] = d->qpos[j];
+                for (int j = 0; j < nv; j++) st_ptr[nq + j] = d->qvel[j];
+
+                // Add initial state to history
+                std::vector<double> current_state(nstate);
+                for (int j = 0; j < nq; j++) current_state[j] = d->qpos[j];
+                for (int j = 0; j < nv; j++) current_state[nq + j] = d->qvel[j];
+                thread_state->state_history.push(current_state);
+
+                for (int t = 0; t < horizon; t++) {
+                    std::vector<double> action(nu, 0.0);  // Default zero action
+
+                    // Run ONNX inference to get action
+                    if (inference_frequency > 0 && (t + 1) % inference_frequency == 0) {
+                        // Prepare additional inputs for this rollout
+                        std::vector<double> addl_inputs;
+                        if (additional_input_dim > 0) {
+                            addl_inputs.assign(
+                                &additional_input_data[i * additional_input_dim],
+                                &additional_input_data[(i + 1) * additional_input_dim]
+                            );
+                        }
+
+                        // Get ONNX input (state history + action history + additional inputs)
+                        std::vector<float> onnx_input = thread_state->prepare_onnx_input(addl_inputs);
+
+                        // Run inference
+                        std::vector<int64_t> input_shape = {1, (int64_t)onnx_input.size()};
+                        std::vector<float> onnx_output = thread_state->onnx_model->run_inference(onnx_input, input_shape);
+
+                        // Extract action from ONNX output
+                        for (int j = 0; j < nu && j < (int)onnx_output.size(); j++) {
+                            action[j] = static_cast<double>(onnx_output[j]);
+                        }
+                    }
+
+                    // Apply action to simulation
+                    for (int j = 0; j < nu; j++) {
+                        d->ctrl[j] = action[j];
+                    }
+
+                    // Step simulation
+                    mj_step(models[i], d);
+
+                    // Record new state
+                    for (int j = 0; j < nq; j++) current_state[j] = d->qpos[j];
+                    for (int j = 0; j < nv; j++) current_state[nq + j] = d->qvel[j];
+
+                    // Store in output buffers
+                    for (int j = 0; j < nstate; j++) {
+                        st_ptr[(t + 1) * nstate + j] = current_state[j];
+                    }
+                    for (int j = 0; j < nu; j++) {
+                        act_ptr[t * nu + j] = action[j];
+                    }
+                    for (int j = 0; j < nsens; j++) {
+                        se_ptr[t * nsens + j] = d->sensordata[j];
+                    }
+
+                    // Update histories for next iteration
+                    thread_state->state_history.push(current_state);
+                    thread_state->action_history.push(action);
+                }
+
+            } catch (const std::exception& e) {
+                std::cerr << "Error in persistent policy rollout thread " << i << ": " << e.what() << std::endl;
+                // Fill with zeros as fallback
+                double* st_ptr = &states_buf[i * (horizon + 1) * nstate];
+                double* act_ptr = &actions_buf[i * horizon * nu];
+                double* se_ptr = &sens_buf[i * horizon * nsens];
+
+                for (int t = 0; t <= horizon; t++) {
+                    for (int j = 0; j < nstate; j++) {
+                        st_ptr[t * nstate + j] = 0.0;
+                    }
+                }
+                for (int t = 0; t < horizon; t++) {
+                    for (int j = 0; j < nu; j++) act_ptr[t * nu + j] = 0.0;
+                    for (int j = 0; j < nsens; j++) se_ptr[t * nsens + j] = 0.0;
+                }
+            }
+        }, B);
+    }
+
+    auto states_arr = make_array(states_buf, B, horizon + 1, nstate);
+    auto actions_arr = make_array(actions_buf, B, horizon, nu);
+    auto sens_arr = make_array(sens_buf, B, horizon, nsens);
+
+    return py::make_tuple(states_arr, actions_arr, sens_arr);
+}
