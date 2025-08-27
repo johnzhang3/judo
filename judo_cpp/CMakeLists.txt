@@ -22,7 +22,9 @@ message(STATUS "MuJoCo package root: ${MJ_PKG_ROOT}")
 
 # 2. Glob for the actual libmujoco.so file(s) there
 file(GLOB MUJOCO_LIB_FILES
-     "${MJ_PKG_ROOT}/libmujoco.so*"  # catches libmujoco.so.3.3.3, etc.
+     "${MJ_PKG_ROOT}/libmujoco.so*"  # Linux
+     "${MJ_PKG_ROOT}/libmujoco.dylib"  # macOS default
+     "${MJ_PKG_ROOT}/libmujoco.*.dylib"  # macOS versioned dylib
 )
 if(NOT MUJOCO_LIB_FILES)
   message(FATAL_ERROR "Could not find any libmujoco.so* in ${MJ_PKG_ROOT}")
@@ -59,8 +61,12 @@ message(STATUS "ONNX Runtime include dir: ${ONNXRUNTIME_INCLUDE_DIR}")
 
 # Find ONNX Runtime library
 file(GLOB ONNXRUNTIME_LIB_FILES
-     "${ONNXRUNTIME_PKG_ROOT}/lib/libonnxruntime.so*"
-     "${CONDA_PREFIX}/lib/libonnxruntime.so*"
+     "${ONNXRUNTIME_PKG_ROOT}/lib/libonnxruntime.so*"  # Linux
+     "${CONDA_PREFIX}/lib/libonnxruntime.so*"  # Linux
+     "${ONNXRUNTIME_PKG_ROOT}/lib/libonnxruntime.*/onnxruntime.framework/onnxruntime"  # macOS framework layout
+     "${CONDA_PREFIX}/lib/libonnxruntime.*/onnxruntime.framework/onnxruntime"  # macOS framework layout
+     "${ONNXRUNTIME_PKG_ROOT}/lib/libonnxruntime.dylib"  # macOS dylib
+     "${CONDA_PREFIX}/lib/libonnxruntime.dylib"  # macOS dylib
 )
 if(NOT ONNXRUNTIME_LIB_FILES)
   message(FATAL_ERROR "Could not find libonnxruntime.so")

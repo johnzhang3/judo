@@ -17,3 +17,4 @@ cmake.source-dir = "."
 wheel.packages = ["judo_cpp"]
 cmake.build-type = "Release"
 build-dir = "build"  # for manual rebuilding during dev
+cmake.args = ["-DEigen3_DIR=$ENV{CONDA_PREFIX}/lib/cmake/eigen3"]

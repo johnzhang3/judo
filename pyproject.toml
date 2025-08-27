@@ -181,7 +181,10 @@ python = ">=3.10"
 [tool.pixi.environments]
 default = { solve-group = "default" }
 docs = { features = ["docs"], solve-group = "default" }
-dev = { features = ["dev", "docs", "cpp"], solve-group = "default" }
+
+[tool.pixi.environments.dev]
+features = ["dev", "docs", "cpp"]
+solve-group = "default"
 
 [tool.pixi.feature.dev.dependencies]
 pre-commit = "*"
@@ -206,6 +209,7 @@ pybind11 = "*"
 cxx-compiler = "*"
 c-compiler = "*"
 onnxruntime-cpp = ">=1.22.0,<2"
+eigen = "*"
 
 [tool.pixi.feature.cpp.pypi-dependencies]
 judo-cpp = { path = "./judo_cpp", editable = true }
@@ -230,7 +234,6 @@ cmd = "ninja _judo_cpp && pybind11-stubgen judo_cpp --numpy-array-use-type-var -
 [tool.pixi.tasks.clean]
 cwd = "judo_cpp"
 cmd = "rm -rf build/"
-dev = { features = ["dev", "docs"], solve-group = "default" }
 
 [tool.pixi.target.osx-arm64.dependencies]
 msgspec = ">=0.19.0,<0.20"
