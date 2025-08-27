@@ -89,10 +89,32 @@ execute_process(
 )  # find the site-packages directory
 set_target_properties(_judo_cpp PROPERTIES
   LIBRARY_OUTPUT_DIRECTORY "${SITE_PACKAGES_DIR}/judo_cpp"
-  BUILD_RPATH "$ORIGIN/../mujoco"
-  INSTALL_RPATH "$ORIGIN/../mujoco"
-  BUILD_RPATH_USE_ORIGIN TRUE
 )  # rebuild the bound module to the site-packages directory
+
+# Configure RPATHs correctly for each platform
+if(APPLE)
+  set_target_properties(_judo_cpp PROPERTIES
+    MACOSX_RPATH ON
+    BUILD_WITH_INSTALL_RPATH TRUE
+    BUILD_RPATH "@loader_path/../mujoco"
+    INSTALL_RPATH "@loader_path/../mujoco"
+  )
+  # MuJoCo pip wheel on macOS ships a flat lib, but exposes a framework-style install_name.
+  # Rewrite the dependency on the built extension to the flat @rpath/libmujoco.*.dylib.
+  get_filename_component(MUJOCO_LIB_NAME "${MUJOCO_LIB}" NAME)
+  add_custom_command(TARGET _judo_cpp POST_BUILD
+    COMMAND install_name_tool -change
+      "@rpath/mujoco.framework/Versions/A/${MUJOCO_LIB_NAME}"
+      "@rpath/${MUJOCO_LIB_NAME}"
+      "$<TARGET_FILE:_judo_cpp>"
+    VERBATIM)
+else()
+  set_target_properties(_judo_cpp PROPERTIES
+    BUILD_RPATH "$ORIGIN/../mujoco"
+    INSTALL_RPATH "$ORIGIN/../mujoco"
+    BUILD_RPATH_USE_ORIGIN TRUE
+  )
+endif()
 target_link_libraries(_judo_cpp PRIVATE
   Eigen3::Eigen
   OpenMP::OpenMP_CXX
