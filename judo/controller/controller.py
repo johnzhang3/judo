@@ -34,11 +34,21 @@ class ControllerConfig(OverridableConfig):
     max_opt_iters: int = 1
     max_num_traces: int = 5
     action_normalizer: Literal["none", "min_max", "running"] = "none"
-    rollout_backend: Literal["mujoco", "cpp", "cpp_persistent", "onnx", "onnx_persistent"] = "mujoco"
+    rollout_backend: Literal[
+        "mujoco",
+        "cpp",
+        "cpp_persistent",
+        "onnx",
+        "onnx_persistent",
+        "onnx_policy",
+        "onnx_policy_persistent",
+    ] = "mujoco"
 
     # ONNX configuration fields
     onnx_model_path: str | None = None
     onnx_inference_frequency: int = 1
+    onnx_state_history_length: int = 10
+    onnx_action_history_length: int = 5
 
 
 class Controller:
@@ -76,6 +86,31 @@ class Controller:
         self.rollout_backend = RolloutBackend(
             num_threads=self.optimizer_cfg.num_rollouts, backend=controller_config.rollout_backend
         )
+
+        # Configure ONNX policy or interleave backends if requested
+        if self._controller_cfg.rollout_backend in ("onnx", "onnx_persistent"):
+            if self._controller_cfg.onnx_model_path:
+                self.rollout_backend.set_onnx_config(
+                    self._controller_cfg.onnx_model_path, self._controller_cfg.onnx_inference_frequency
+                )
+            else:
+                raise ValueError(
+                    f"ONNX model path must be specified for {self._controller_cfg.rollout_backend} backend. "
+                    f"Set 'onnx_model_path' in your configuration."
+                )
+        elif self._controller_cfg.rollout_backend in ("onnx_policy", "onnx_policy_persistent"):
+            if self._controller_cfg.onnx_model_path:
+                self.rollout_backend.set_onnx_policy_config(
+                    model_path=self._controller_cfg.onnx_model_path,
+                    state_history_length=self._controller_cfg.onnx_state_history_length,
+                    action_history_length=self._controller_cfg.onnx_action_history_length,
+                    inference_frequency=self._controller_cfg.onnx_inference_frequency,
+                )
+            else:
+                raise ValueError(
+                    f"ONNX model path must be specified for {self._controller_cfg.rollout_backend} backend. "
+                    f"Set 'onnx_model_path' in your configuration."
+                )
 
         self.action_normalizer = self._init_action_normalizer()
 
@@ -118,17 +153,28 @@ class Controller:
                 num_threads=self.optimizer_cfg.num_rollouts, backend=new_config.rollout_backend
             )
 
-            # Configure ONNX if needed
-            if new_config.rollout_backend in ["onnx", "onnx_persistent"]:
-                if new_config.onnx_model_path:
-                    self.rollout_backend.set_onnx_config(
-                        new_config.onnx_model_path, new_config.onnx_inference_frequency
-                    )
-                else:
-                    raise ValueError(
-                        f"ONNX model path must be specified for {new_config.rollout_backend} backend. "
-                        f"Set 'onnx_model_path' in your configuration."
-                    )
+        # Configure ONNX backends if needed (even if backend type didn't change)
+        if new_config.rollout_backend in ("onnx", "onnx_persistent"):
+            if new_config.onnx_model_path:
+                self.rollout_backend.set_onnx_config(new_config.onnx_model_path, new_config.onnx_inference_frequency)
+            else:
+                raise ValueError(
+                    f"ONNX model path must be specified for {new_config.rollout_backend} backend. "
+                    f"Set 'onnx_model_path' in your configuration."
+                )
+        elif new_config.rollout_backend in ("onnx_policy", "onnx_policy_persistent"):
+            if new_config.onnx_model_path:
+                self.rollout_backend.set_onnx_policy_config(
+                    model_path=new_config.onnx_model_path,
+                    state_history_length=new_config.onnx_state_history_length,
+                    action_history_length=new_config.onnx_action_history_length,
+                    inference_frequency=new_config.onnx_inference_frequency,
+                )
+            else:
+                raise ValueError(
+                    f"ONNX model path must be specified for {new_config.rollout_backend} backend. "
+                    f"Set 'onnx_model_path' in your configuration."
+                )
 
     @property
     def horizon(self) -> float:
@@ -219,17 +265,31 @@ class Controller:
             )
             self.candidate_knots = self.action_normalizer.denormalize(candidate_knots_normalized)
 
-            # Evaluate rollout controls at sim timesteps.
-            candidate_splines = make_spline(new_times, self.candidate_knots, self.spline_order)
-            self.rollout_controls = candidate_splines(curr_time + self.rollout_times)
+            # Evaluate rollout depending on backend
+            backend_type = getattr(self.rollout_backend, "backend", "")
+            if backend_type in ("onnx_policy", "onnx_policy_persistent"):
+                # Policy-driven rollout generates actions internally
+                self.task.pre_rollout(curr_state, self.task_cfg)
+                horizon_steps = int(self.num_timesteps - 1)
+                self.states, actions, self.sensors = self.rollout_backend.policy_rollout(
+                    self.model_data_pairs,
+                    curr_state,
+                    horizon_steps,
+                )
+                # Use actions returned by the policy
+                self.rollout_controls = actions
+            else:
+                # Evaluate rollout controls at sim timesteps using current candidate spline
+                candidate_splines = make_spline(new_times, self.candidate_knots, self.spline_order)
+                self.rollout_controls = candidate_splines(curr_time + self.rollout_times)
 
-            # Roll out dynamics with action sequences.
-            self.task.pre_rollout(curr_state, self.task_cfg)
-            self.states, self.sensors = self.rollout_backend.rollout(
-                self.model_data_pairs,
-                curr_state,
-                self.rollout_controls,
-            )
+                # Roll out dynamics with action sequences
+                self.task.pre_rollout(curr_state, self.task_cfg)
+                self.states, self.sensors = self.rollout_backend.rollout(
+                    self.model_data_pairs,
+                    curr_state,
+                    self.rollout_controls,
+                )
             self.task.post_rollout(
                 self.states,
                 self.sensors,
@@ -290,34 +350,29 @@ class Controller:
         self.all_traces_rollout_size = self.sensor_rollout_size * self.num_trace_sensors
         if self.num_trace_elites != min(self.max_num_traces, self.optimizer_cfg.num_rollouts):
             self.num_trace_elites = min(self.max_num_traces, self.optimizer_cfg.num_rollouts)
-        sensors = np.repeat(self.sensors, 2, axis=1)
-
         # Order the actions from best to worst so that the first `num_trace_sensors` x `num_nodes` traces
         # correspond to the best rollout and are using a special colors
         elite_actions = np.argsort(self.rewards)[-self.num_trace_elites :][::-1]
 
-        total_traces_rollouts = int(self.num_trace_elites * self.num_trace_sensors * self.sensor_rollout_size)
-        # Calculates list of the elite indicies
+        # Select elites and only the trace sensor positions
         trace_inds = [self.model.sensor_adr[id] + pos for id in self.trace_sensors for pos in range(3)]
-
-        # Filter out the non-elite indices we don't care about
-        sensors = sensors[elite_actions, :, :]
-        # Remove everything but the trace sensors we care about, leaving htis column as size num_trace_sensors * 3
+        sensors = self.sensors[elite_actions, :, :]
         sensors = sensors[:, :, trace_inds]
-        # Remove the first and last part the trajectory to form line segments properly
-        # Array will be doubled and look something like: [(0, 0), (1, 1), (4, 4)]
-        # We want it to look like: [(0, 1), (1, 4)]
-        sensors = sensors[:, 1:-1, :]
 
-        # We doubled it so the number of entries is going to be the size of the rollout * 2
-        separated_sensors_size = (self.num_trace_elites, self.sensor_rollout_size, 2, 3)
+        # Build consecutive pairs (t, t+1) directly; sensors shape is (E, H, 3*num_trace_sensors)
+        H = sensors.shape[1]
+        if H < 2:
+            self.traces = np.zeros((0, 2, 3))
+            return
+        segment_count = H - 1
+        total_traces_rollouts = int(self.num_trace_elites * self.num_trace_sensors * segment_count)
 
-        # Each block of (i, self.sensor_rollout_size) needs to be interleaved together into a stack of
-        # [block(i, ), block (i + 1, ), ..., block(i + n)]
-        elites = np.zeros((self.num_trace_sensors * self.num_trace_elites, self.sensor_rollout_size, 2, 3))
+        elites = np.zeros((self.num_trace_sensors * self.num_trace_elites, segment_count, 2, 3))
         for sensor in range(self.num_trace_sensors):
-            s1 = np.reshape(sensors[:, :, sensor * 3 : (sensor + 1) * 3], separated_sensors_size)
-            elites[sensor :: self.num_trace_sensors] = s1
+            s = sensors[:, :, sensor * 3 : (sensor + 1) * 3]  # (E, H, 3)
+            pairs = np.stack([s[:, :-1, :], s[:, 1:, :]], axis=2)  # (E, H-1, 2, 3)
+            elites[sensor :: self.num_trace_sensors] = pairs
+
         self.traces = np.reshape(elites, (total_traces_rollouts, 2, 3))
 
     def _init_action_normalizer(self) -> Normalizer:
