@@ -7,40 +7,42 @@ import torch
 from torch import nn
 
 
-def build_dummy_policy(input_dim: int, action_dim: int) -> nn.Module:
+def build_dummy_policy(input_dim: int, action_dim: int, horizon: int | None = None) -> nn.Module:
     class ZeroPolicy(nn.Module):
-        def __init__(self, in_dim: int, out_dim: int):
+        def __init__(self, in_dim: int, out_dim: int, H: int | None):
             super().__init__()
-            # minimal MLP stub; we ignore inputs and return zeros, but keep a head for shape clarity
             self.net = nn.Sequential(
                 nn.Linear(in_dim, max(4, min(64, in_dim))),
                 nn.ReLU(),
                 nn.Linear(max(4, min(64, in_dim)), out_dim),
             )
+            self.H = H
 
         def forward(self, x: torch.Tensor) -> torch.Tensor:
-            # x: [B, input_dim]
             B = x.shape[0]
+            if self.H is not None and x.shape[1] >= action_dim * self.H:
+                plan = x[:, -action_dim * self.H :]
+                return plan[:, :action_dim]
             return torch.zeros(B, action_dim, dtype=x.dtype, device=x.device)
 
-    return ZeroPolicy(input_dim, action_dim).eval()
+    return ZeroPolicy(input_dim, action_dim, horizon).eval()
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Export a dummy zero-action policy to ONNX")
-    parser.add_argument("--state_dim", type=int, required=True)
-    parser.add_argument("--action_dim", type=int, required=True)
-    parser.add_argument("--state_history", type=int, default=10)
-    parser.add_argument("--action_history", type=int, default=5)
+    parser.add_argument("--state_dim", type=int, default=51)
+    parser.add_argument("--action_dim", type=int, default=19)
+    parser.add_argument("--state_history", type=int, default=2)
+    parser.add_argument("--action_history", type=int, default=2)
     parser.add_argument("--additional_input_dim", type=int, default=0)
-    parser.add_argument("--out", type=str, default="dev/dummy_policy.onnx")
+    parser.add_argument("--horizon", type=int, default=None, help="If set, expect horizon*action_dim plan appended")
+    parser.add_argument("--out", type=str, default="dev/dummy_spot_policy_h2a2.onnx")
     args = parser.parse_args()
 
     input_dim = args.state_dim * args.state_history + args.action_dim * args.action_history + args.additional_input_dim
 
-    model = build_dummy_policy(input_dim, args.action_dim)
+    model = build_dummy_policy(input_dim, args.action_dim, args.horizon)
 
-    # Dummy input with dynamic batch dimension
     dummy_batch = 2
     dummy_input = torch.randn(dummy_batch, input_dim, dtype=torch.float32)
 

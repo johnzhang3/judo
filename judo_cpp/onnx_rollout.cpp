@@ -814,9 +814,8 @@ py::tuple ONNXPolicyRollout(
                 for (int t = 0; t < horizon; t++) {
                     std::vector<double> action(nu, 0.0);  // Default zero action
 
-                    // Run ONNX inference to get action
+                    // Always go through ONNX inference (additional inputs are part of the ONNX input vector)
                     if (inference_frequency > 0 && (t + 1) % inference_frequency == 0) {
-                        // Prepare additional inputs for this rollout
                         std::vector<double> addl_inputs;
                         if (additional_input_dim > 0) {
                             addl_inputs.assign(
@@ -825,19 +824,13 @@ py::tuple ONNXPolicyRollout(
                             );
                         }
 
-                        // Get ONNX input (state history + action history + additional inputs)
                         std::vector<float> onnx_input = thread_state.prepare_onnx_input(addl_inputs);
-
-                        // Run inference
                         std::vector<int64_t> input_shape = {1, (int64_t)onnx_input.size()};
                         std::vector<float> onnx_output = thread_state.onnx_model->run_inference(onnx_input, input_shape);
-
-                        // Extract action from ONNX output (assuming action is the output)
                         for (int j = 0; j < nu && j < (int)onnx_output.size(); j++) {
                             action[j] = static_cast<double>(onnx_output[j]);
                         }
                     }
-                    // else: use default zero action
 
                     // Apply action to simulation
                     for (int j = 0; j < nu; j++) {
@@ -993,9 +986,8 @@ py::tuple PersistentONNXPolicyRollout(
                 for (int t = 0; t < horizon; t++) {
                     std::vector<double> action(nu, 0.0);  // Default zero action
 
-                    // Run ONNX inference to get action
+                    // Always run ONNX inference (no pass-through in C++)
                     if (inference_frequency > 0 && (t + 1) % inference_frequency == 0) {
-                        // Prepare additional inputs for this rollout
                         std::vector<double> addl_inputs;
                         if (additional_input_dim > 0) {
                             addl_inputs.assign(
@@ -1003,15 +995,9 @@ py::tuple PersistentONNXPolicyRollout(
                                 &additional_input_data[(i + 1) * additional_input_dim]
                             );
                         }
-
-                        // Get ONNX input (state history + action history + additional inputs)
                         std::vector<float> onnx_input = thread_state->prepare_onnx_input(addl_inputs);
-
-                        // Run inference
                         std::vector<int64_t> input_shape = {1, (int64_t)onnx_input.size()};
                         std::vector<float> onnx_output = thread_state->onnx_model->run_inference(onnx_input, input_shape);
-
-                        // Extract action from ONNX output
                         for (int j = 0; j < nu && j < (int)onnx_output.size(); j++) {
                             action[j] = static_cast<double>(onnx_output[j]);
                         }

@@ -6,7 +6,8 @@ defaults:
 controller_config_overrides:
   spot_locomotion:
     rollout_backend: "onnx_policy_persistent"
-    onnx_model_path: "dev/dummy_spot_policy_h2a2.onnx"
+    # onnx_model_path: "dev/dummy_spot_policy_h2a2.onnx"
+    onnx_model_path: "dev/policy_with_plan.onnx"
     onnx_state_history_length: 2
     onnx_action_history_length: 2
     onnx_inference_frequency: 1

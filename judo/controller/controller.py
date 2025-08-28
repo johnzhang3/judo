@@ -49,6 +49,8 @@ class ControllerConfig(OverridableConfig):
     onnx_inference_frequency: int = 1
     onnx_state_history_length: int = 10
     onnx_action_history_length: int = 5
+    # Optional: length of appended plan segment in the ONNX input (horizon * action_dim)
+    onnx_additional_input_dim: int | None = None
 
 
 class Controller:
@@ -265,25 +267,42 @@ class Controller:
             )
             self.candidate_knots = self.action_normalizer.denormalize(candidate_knots_normalized)
 
-            # Evaluate rollout depending on backend
+            # Evaluate rollout controls at sim timesteps using current candidate spline
+            candidate_splines = make_spline(new_times, self.candidate_knots, self.spline_order)
+            self.rollout_controls = candidate_splines(curr_time + self.rollout_times)
+
             backend_type = getattr(self.rollout_backend, "backend", "")
             if backend_type in ("onnx_policy", "onnx_policy_persistent"):
-                # Policy-driven rollout generates actions internally
+                # For policy backends, feed optimizer samples (plan) to the policy via additional inputs
                 self.task.pre_rollout(curr_state, self.task_cfg)
                 horizon_steps = int(self.num_timesteps - 1)
+                B = self.optimizer_cfg.num_rollouts
+                nu = self.model.nu
+                controls = self.rollout_controls
+                # Align plan horizon (actions are defined between consecutive states)
+                if controls.shape[1] != horizon_steps:
+                    controls = controls[:, :horizon_steps, :]
+                plan = controls.reshape(B, horizon_steps * nu)
+                # If ONNX expects an appended plan segment, ensure dims match exactly
+                expected_extra = self._controller_cfg.onnx_additional_input_dim
+                if expected_extra is not None:
+                    if expected_extra != horizon_steps * nu:
+                        # Resize by padding/truncating to expected length
+                        if expected_extra > plan.shape[1]:
+                            pad = np.zeros((B, expected_extra - plan.shape[1]))
+                            plan = np.concatenate([plan, pad], axis=1)
+                        else:
+                            plan = plan[:, :expected_extra]
                 self.states, actions, self.sensors = self.rollout_backend.policy_rollout(
                     self.model_data_pairs,
                     curr_state,
                     horizon_steps,
+                    additional_inputs={"plan": plan},
                 )
-                # Use actions returned by the policy
+                # Replace rollout_controls with policy-produced actions
                 self.rollout_controls = actions
             else:
-                # Evaluate rollout controls at sim timesteps using current candidate spline
-                candidate_splines = make_spline(new_times, self.candidate_knots, self.spline_order)
-                self.rollout_controls = candidate_splines(curr_time + self.rollout_times)
-
-                # Roll out dynamics with action sequences
+                # Non-policy backends: roll out dynamics with action sequences
                 self.task.pre_rollout(curr_state, self.task_cfg)
                 self.states, self.sensors = self.rollout_backend.rollout(
                     self.model_data_pairs,
