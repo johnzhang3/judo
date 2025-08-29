@@ -817,7 +817,14 @@ py::tuple ONNXPolicyRollout(
                     // Always go through ONNX inference (additional inputs are part of the ONNX input vector)
                     if (inference_frequency > 0 && (t + 1) % inference_frequency == 0) {
                         std::vector<double> addl_inputs;
-                        if (additional_input_dim > 0) {
+                        if (additional_input_dim == horizon * nu) {
+                            // Use only the next candidate action (nu) from the provided plan for this timestep
+                            const int base = (i * additional_input_dim) + (t * nu);
+                            addl_inputs.assign(
+                                &additional_input_data[base],
+                                &additional_input_data[base + nu]
+                            );
+                        } else if (additional_input_dim > 0) {
                             addl_inputs.assign(
                                 &additional_input_data[i * additional_input_dim],
                                 &additional_input_data[(i + 1) * additional_input_dim]
@@ -989,7 +996,13 @@ py::tuple PersistentONNXPolicyRollout(
                     // Always run ONNX inference (no pass-through in C++)
                     if (inference_frequency > 0 && (t + 1) % inference_frequency == 0) {
                         std::vector<double> addl_inputs;
-                        if (additional_input_dim > 0) {
+                        if (additional_input_dim == horizon * nu) {
+                            const int base = (i * additional_input_dim) + (t * nu);
+                            addl_inputs.assign(
+                                &additional_input_data[base],
+                                &additional_input_data[base + nu]
+                            );
+                        } else if (additional_input_dim > 0) {
                             addl_inputs.assign(
                                 &additional_input_data[i * additional_input_dim],
                                 &additional_input_data[(i + 1) * additional_input_dim]

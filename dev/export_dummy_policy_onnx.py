@@ -7,25 +7,22 @@ import torch
 from torch import nn
 
 
-def build_dummy_policy(input_dim: int, action_dim: int, horizon: int | None = None) -> nn.Module:
+def build_dummy_policy(input_dim: int, action_dim: int) -> nn.Module:
     class ZeroPolicy(nn.Module):
-        def __init__(self, in_dim: int, out_dim: int, H: int | None):
+        def __init__(self, in_dim: int, out_dim: int):
             super().__init__()
             self.net = nn.Sequential(
                 nn.Linear(in_dim, max(4, min(64, in_dim))),
                 nn.ReLU(),
                 nn.Linear(max(4, min(64, in_dim)), out_dim),
             )
-            self.H = H
 
         def forward(self, x: torch.Tensor) -> torch.Tensor:
             B = x.shape[0]
-            if self.H is not None and x.shape[1] >= action_dim * self.H:
-                plan = x[:, -action_dim * self.H :]
-                return plan[:, :action_dim]
-            return torch.zeros(B, action_dim, dtype=x.dtype, device=x.device)
+            # Always pass through the last action_dim features (next action)
+            return x[:, -action_dim:]
 
-    return ZeroPolicy(input_dim, action_dim, horizon).eval()
+    return ZeroPolicy(input_dim, action_dim).eval()
 
 
 def main() -> None:
@@ -35,13 +32,12 @@ def main() -> None:
     parser.add_argument("--state_history", type=int, default=2)
     parser.add_argument("--action_history", type=int, default=2)
     parser.add_argument("--additional_input_dim", type=int, default=0)
-    parser.add_argument("--horizon", type=int, default=None, help="If set, expect horizon*action_dim plan appended")
     parser.add_argument("--out", type=str, default="dev/dummy_spot_policy_h2a2.onnx")
     args = parser.parse_args()
 
     input_dim = args.state_dim * args.state_history + args.action_dim * args.action_history + args.additional_input_dim
 
-    model = build_dummy_policy(input_dim, args.action_dim, args.horizon)
+    model = build_dummy_policy(input_dim, args.action_dim)
 
     dummy_batch = 2
     dummy_input = torch.randn(dummy_batch, input_dim, dtype=torch.float32)
