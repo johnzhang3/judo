@@ -33,10 +33,6 @@ class RolloutBackend:
         num_threads: int,
         backend: Literal[
             "mujoco",
-            "cpp",
-            "cpp_persistent",
-            "onnx",
-            "onnx_persistent",
             "onnx_policy",
             "onnx_policy_persistent",
         ],
@@ -47,8 +43,6 @@ class RolloutBackend:
             num_threads: Number of threads to use for rollouts
             backend: The backend to use for rollouts:
                 - "mujoco": Use MuJoCo's threaded rollout API
-                - "cpp": Use pure C++ rollout implementation
-                - "cpp_persistent": Use C++ rollout with persistent thread pool
                 - "onnx": Use C++ rollout with ONNX inference interleaving
                 - "onnx_persistent": Use C++ rollout with ONNX inference and persistent thread pool
         """
@@ -60,10 +54,6 @@ class RolloutBackend:
         if self.backend == "mujoco":
             self.setup_mujoco_backend(num_threads)
         elif self.backend in [
-            "cpp",
-            "cpp_persistent",
-            "onnx",
-            "onnx_persistent",
             "onnx_policy",
             "onnx_policy_persistent",
         ]:
@@ -81,17 +71,10 @@ class RolloutBackend:
         if not JUDO_CPP_AVAILABLE or judo_cpp is None:
             raise ImportError("judo_cpp module is not available. Please compile the C++ extension.")
         print(f"Using C++ backend: {self.backend}")
-        if self.backend == "cpp":
-            self.rollout_func = judo_cpp.pure_cpp_rollout
-        elif self.backend == "cpp_persistent":
-            self.rollout_func = judo_cpp.persistent_cpp_rollout
-        elif self.backend == "onnx":
-            self.rollout_func = judo_cpp.onnx_interleave_rollout
-        elif self.backend == "onnx_persistent":
-            self.rollout_func = judo_cpp.persistent_onnx_interleave_rollout
-        elif self.backend in ("onnx_policy", "onnx_policy_persistent"):
-            # Policy backends are exercised via policy_rollout(); a direct rollout() call is unsupported.
-            self.rollout_func = None  # type: ignore[assignment]
+        if self.backend == "onnx_policy":
+            self.rollout_func = judo_cpp.onnx_policy_rollout
+        elif self.backend == "onnx_policy_persistent":
+            self.rollout_func = judo_cpp.persistent_onnx_policy_rollout
         else:
             raise ValueError(f"Unknown C++ backend: {self.backend}")
 
@@ -129,8 +112,6 @@ class RolloutBackend:
                                  e.g., {'goal': 3, 'command': 6}
         """
         if self.backend not in [
-            "onnx",
-            "onnx_persistent",
             "onnx_policy",
             "onnx_policy_persistent",
         ]:
@@ -179,51 +160,6 @@ class RolloutBackend:
             out_states = np.array(_states)[..., 1:]  # remove time from state
             out_sensors = np.array(_out_sensors)
 
-        elif self.backend in ["cpp", "cpp_persistent"]:
-            # C++ backends expect x0 without time
-            x0_batched = np.tile(x0, (len(ms), 1))
-            assert x0_batched.shape[-1] == nq + nv
-            assert x0_batched.ndim == 2
-            assert controls.ndim == 3
-            assert controls.shape[-1] == nu
-            assert controls.shape[0] == x0_batched.shape[0]
-
-            # rollout returns (states, sensors, inputs)
-            result = self.rollout_func(ms, ds, x0_batched, controls)
-            out_states, out_sensors = np.array(result[0]), np.array(result[1])
-
-        elif self.backend in ["onnx", "onnx_persistent"]:
-            # ONNX backends expect x0 without time and require ONNX model path
-            if self.onnx_model_path is None:
-                raise ValueError("ONNX model path must be set using set_onnx_config() for ONNX backends")
-
-            x0_batched = np.tile(x0, (len(ms), 1))
-            assert x0_batched.shape[-1] == nq + nv
-            assert x0_batched.ndim == 2
-            assert controls.ndim == 3
-            assert controls.shape[-1] == nu
-            assert controls.shape[0] == x0_batched.shape[0]
-
-            # rollout returns (states, sensors, inputs, inferences)
-            try:
-                result = self.rollout_func(ms, ds, x0_batched, controls, self.onnx_model_path, self.inference_frequency)
-                out_states, out_sensors = np.array(result[0]), np.array(result[1])
-            except Exception as e:
-                if "Got invalid dimensions" in str(e) or "incompatible function arguments" in str(e):
-                    expected_dim = nq + nv
-                    raise ValueError(
-                        f"ONNX model issue:\n"
-                        f"  Current simulation state size: {expected_dim}\n"
-                        f"  ONNX model: {self.onnx_model_path}\n"
-                        f"  Original error: {e}\n\n"
-                        f"Solutions:\n"
-                        f"  1. Use a different backend: rollout_backend: 'cpp_persistent'\n"
-                        f"  2. Use an ONNX model that matches this task's state dimensions\n"
-                        f"  3. Test with a different task that matches the model dimensions"
-                    ) from e
-                else:
-                    raise
-
         elif self.backend in ["onnx_policy", "onnx_policy_persistent"]:
             raise ValueError("rollout() is not supported for onnx_policy backends. Use policy_rollout() instead.")
         else:
@@ -253,8 +189,6 @@ class RolloutBackend:
             sensors: (num_rollouts, horizon, sensor_dim)
         """
         if self.backend not in [
-            "onnx",
-            "onnx_persistent",
             "onnx_policy",
             "onnx_policy_persistent",
         ]:
@@ -286,13 +220,7 @@ class RolloutBackend:
             if input_list:
                 processed_additional_inputs = np.concatenate(input_list, axis=1)
 
-        # Call C++ policy rollout function
-        if self.backend in ("onnx", "onnx_policy"):
-            rollout_func = judo_cpp.onnx_policy_rollout
-        else:  # persistent variants
-            rollout_func = judo_cpp.persistent_onnx_policy_rollout
-
-        result = rollout_func(
+        result = self.rollout_func(
             list(ms),
             list(ds),
             x0_batched,

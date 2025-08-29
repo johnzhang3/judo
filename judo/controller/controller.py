@@ -283,16 +283,7 @@ class Controller:
                 if controls.shape[1] != horizon_steps:
                     controls = controls[:, :horizon_steps, :]
                 plan = controls.reshape(B, horizon_steps * nu)
-                # If ONNX expects an appended plan segment, ensure dims match exactly
-                expected_extra = self._controller_cfg.onnx_additional_input_dim
-                if expected_extra is not None:
-                    if expected_extra != horizon_steps * nu:
-                        # Resize by padding/truncating to expected length
-                        if expected_extra > plan.shape[1]:
-                            pad = np.zeros((B, expected_extra - plan.shape[1]))
-                            plan = np.concatenate([plan, pad], axis=1)
-                        else:
-                            plan = plan[:, :expected_extra]
+                
                 self.states, actions, self.sensors = self.rollout_backend.policy_rollout(
                     self.model_data_pairs,
                     curr_state,
