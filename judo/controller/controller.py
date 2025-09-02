@@ -276,22 +276,14 @@ class Controller:
                 # For policy backends, feed optimizer samples (plan) to the policy via additional inputs
                 self.task.pre_rollout(curr_state, self.task_cfg)
                 horizon_steps = int(self.num_timesteps - 1)
-                B = self.optimizer_cfg.num_rollouts
-                nu = self.model.nu
-                controls = self.rollout_controls
-                # Align plan horizon (actions are defined between consecutive states)
-                if controls.shape[1] != horizon_steps:
-                    controls = controls[:, :horizon_steps, :]
-                plan = controls.reshape(B, horizon_steps * nu)
-                print("debug")
-                self.states, actions, self.sensors = self.rollout_backend.policy_rollout(
+                # print("debug")
+                # print(self.rollout_controls.shape)
+                self.states, self.sensors = self.rollout_backend.policy_rollout(
                     self.model_data_pairs,
                     curr_state,
                     horizon_steps,
-                    # additional_inputs={"plan": plan},
+                    commands=self.rollout_controls,
                 )
-                # Replace rollout_controls with policy-produced actions
-                self.rollout_controls = actions
             else:
                 # Non-policy backends: roll out dynamics with action sequences
                 self.task.pre_rollout(curr_state, self.task_cfg)

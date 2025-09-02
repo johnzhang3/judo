@@ -159,11 +159,15 @@ class RolloutBackend:
             _states, _out_sensors = self.rollout_func(ms, ds, full_states, controls)
             out_states = np.array(_states)[..., 1:]  # remove time from state
             out_sensors = np.array(_out_sensors)
+        elif self.backend == "onnx_policy" or self.backend == "onnx_policy_persistent":
+            _states, _out_sensors = self.rollout_func(ms, ds, x0, controls)
+            out_states = np.array(_states)
+            out_sensors = np.array(_out_sensors)
 
-        elif self.backend in ["onnx_policy", "onnx_policy_persistent"]:
-            raise ValueError("rollout() is not supported for onnx_policy backends. Use policy_rollout() instead.")
-        else:
-            raise ValueError(f"Unknown backend: {self.backend}")
+        # elif self.backend in ["onnx_policy", "onnx_policy_persistent"]:
+        #     raise ValueError("rollout() is not supported for onnx_policy backends. Use policy_rollout() instead.")
+        # else:
+        #     raise ValueError(f"Unknown backend: {self.backend}")
 
         return out_states, out_sensors
 
@@ -172,7 +176,7 @@ class RolloutBackend:
         model_data_pairs: list[tuple[MjModel, MjData]],
         x0: np.ndarray,
         horizon: int,
-        additional_inputs: Optional[dict[str, np.ndarray]] = None,
+        commands: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Conduct a policy-driven rollout where ONNX model generates actions.
 
@@ -200,39 +204,16 @@ class RolloutBackend:
         ms, ds = zip(*model_data_pairs, strict=True)
         x0_batched = np.tile(x0, (len(ms), 1))
 
-        # Prepare additional inputs
-        processed_additional_inputs = np.array([])  # Default empty array
-        if additional_inputs:
-            # For now, assume single additional input. Could be extended for multiple inputs
-            input_list = []
-            for name, data in additional_inputs.items():
-                data_array = np.array(data)
-                if data_array.ndim == 1:
-                    # Broadcast to all rollouts
-                    data_array = np.tile(data_array, (len(ms), 1))
-                elif data_array.shape[0] != len(ms):
-                    raise ValueError(
-                        f"Additional input '{name}' has wrong batch size: {data_array.shape[0]}, expected {len(ms)}"
-                    )
-                input_list.append(data_array)
-
-            # Concatenate all additional inputs
-            if input_list:
-                processed_additional_inputs = np.concatenate(input_list, axis=1)
-
         result = self.rollout_func(
             list(ms),
             list(ds),
             x0_batched,
             horizon,
             self.policy_config["model_path"],
-            self.policy_config["state_history_length"],
-            self.policy_config["action_history_length"],
-            self.policy_config["inference_frequency"],
-            processed_additional_inputs,
+            commands,
         )
 
-        return result[0], result[1], result[2]  # states, actions, sensors
+        return result[0], result[1]  # states, actions, sensors
 
     def update(self, num_threads: int) -> None:
         """Update the backend with a new number of threads."""

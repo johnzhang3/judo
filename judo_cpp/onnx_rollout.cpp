@@ -278,20 +278,26 @@ py::tuple ONNXPolicyRollout(
     }
     const double* x0_ptr = x0.data();
 
-    // Parse commands (per-step length-25 vectors)
+    // Parse commands (expected shape (B, horizon, 25)). Also support (B, horizon*25) or (25,) for backward-compat.
     std::vector<double> commands_buf;
     bool has_commands = false;
     if (commands.size() > 0) {
         has_commands = true;
-        if (commands.ndim() == 2) {
+        if (commands.ndim() == 3) {
+            if (commands.shape(0) != B || commands.shape(1) != horizon || commands.shape(2) != 25) {
+                throw std::runtime_error("commands must have shape (B, horizon, 25)");
+            }
+            commands_buf.resize(B * horizon * 25);
+            std::memcpy(commands_buf.data(), commands.data(), B * horizon * 25 * sizeof(double));
+        } else if (commands.ndim() == 2) {
             if (commands.shape(0) != B || commands.shape(1) != horizon * 25) {
-                throw std::runtime_error("commands must have shape (B, horizon*25)");
+                throw std::runtime_error("commands (2D) must have shape (B, horizon*25)");
             }
             commands_buf.resize(B * horizon * 25);
             std::memcpy(commands_buf.data(), commands.data(), B * horizon * 25 * sizeof(double));
         } else if (commands.ndim() == 1) {
             if (commands.shape(0) != 25) {
-                throw std::runtime_error("commands 1D must have length 25");
+                throw std::runtime_error("commands (1D) must have length 25");
             }
             commands_buf.resize(B * horizon * 25);
             for (int b = 0; b < B; ++b) {
@@ -300,7 +306,7 @@ py::tuple ONNXPolicyRollout(
                 }
             }
         } else {
-            throw std::runtime_error("commands must be 1D or 2D");
+            throw std::runtime_error("commands must be 1D, 2D, or 3D");
         }
     }
 
@@ -390,7 +396,7 @@ py::tuple ONNXPolicyRollout(
     auto actions_arr = make_array(actions_buf, B, horizon, nu);
     auto sens_arr = make_array(sens_buf, B, horizon, nsens);
 
-    return py::make_tuple(states_arr, actions_arr, sens_arr);
+    return py::make_tuple(states_arr, sens_arr);
 }
 
 py::tuple PersistentONNXPolicyRollout(
@@ -420,32 +426,10 @@ py::tuple PersistentONNXPolicyRollout(
     }
     const double* x0_ptr = x0.data();
 
-    // Parse commands
+    // Parse commands: prefer (B, horizon, 25); also accept (B, horizon*25) or (25,)
     std::vector<double> commands_buf;
     bool has_commands = false;
-    if (commands.size() > 0) {
-        has_commands = true;
-        if (commands.ndim() == 2) {
-            if (commands.shape(0) != B || commands.shape(1) != horizon * 25) {
-                throw std::runtime_error("commands must have shape (B, horizon*25)");
-            }
-            commands_buf.resize(B * horizon * 25);
-            std::memcpy(commands_buf.data(), commands.data(), B * horizon * 25 * sizeof(double));
-        } else if (commands.ndim() == 1) {
-            if (commands.shape(0) != 25) {
-                throw std::runtime_error("commands 1D must have length 25");
-            }
-            commands_buf.resize(B * horizon * 25);
-            for (int b = 0; b < B; ++b) {
-                for (int t = 0; t < horizon; ++t) {
-                    std::memcpy(&commands_buf[(b * horizon + t) * 25], commands.data(), 25 * sizeof(double));
-                }
-            }
-        } else {
-            throw std::runtime_error("commands must be 1D or 2D");
-        }
-    }
-
+    // TODO: remove all the if else statements
     // allocate outputs
     std::vector<double> states_buf(B * (horizon + 1) * nstate);
     std::vector<double> actions_buf(B * horizon * nu);
@@ -486,12 +470,19 @@ py::tuple PersistentONNXPolicyRollout(
                 for (int t = 0; t < horizon; t++) {
                     std::vector<double> action(nu, 0.0);  // Default zero action
 
-                    float cmd_step[25] = {0};
+                    float cmd_step_arr[25] = {0};
+                    const float* cmd_ptr = nullptr;
+                    int ncmd = 0;
                     if (has_commands) {
                         const int base = (i * horizon + t) * 25;
-                        for (int k = 0; k < 25; ++k) cmd_step[k] = static_cast<float>(commands_buf[base + k]);
+                        for (int k = 0; k < 25; ++k) cmd_step_arr[k] = static_cast<float>(commands_buf[base + k]);
+                        cmd_ptr = cmd_step_arr;
+                        ncmd = 25;
+                    } else {
+                        cmd_ptr = cmd_step_arr;
+                        ncmd = 25;
                     }
-                    std::vector<float> ctrl = policy.run(d->qpos, nq, d->qvel, nv, cmd_step, 25, prev.data(), 12);
+                    std::vector<float> ctrl = policy.run(d->qpos, nq, d->qvel, nv, cmd_ptr, ncmd, prev.data(), 12);
                     for (int j = 0; j < nu && j < (int)ctrl.size(); ++j) action[j] = ctrl[j];
 
                     // Apply action to simulation
@@ -544,5 +535,5 @@ py::tuple PersistentONNXPolicyRollout(
     auto actions_arr = make_array(actions_buf, B, horizon, nu);
     auto sens_arr = make_array(sens_buf, B, horizon, nsens);
 
-    return py::make_tuple(states_arr, actions_arr, sens_arr);
+    return py::make_tuple(states_arr, sens_arr);
 }
