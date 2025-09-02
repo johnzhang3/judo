@@ -322,10 +322,7 @@ py::tuple ONNXPolicyRollout(
     const py::array_t<double>&         x0,
     int                                horizon,
     const std::string&                 onnx_model_path,
-    int                                state_history_length = 10,
-    int                                action_history_length = 5,
-    int                                inference_frequency = 1,
-    const py::array_t<double>&         additional_inputs = py::array_t<double>()
+    const py::array_t<double>&         commands = py::array_t<double>()
 );
 
 py::tuple PersistentONNXPolicyRollout(
@@ -334,8 +331,14 @@ py::tuple PersistentONNXPolicyRollout(
     const py::array_t<double>&         x0,
     int                                horizon,
     const std::string&                 onnx_model_path,
-    int                                state_history_length = 10,
-    int                                action_history_length = 5,
-    int                                inference_frequency = 1,
-    const py::array_t<double>&         additional_inputs = py::array_t<double>()
+    const py::array_t<double>&         commands = py::array_t<double>()
+);
+
+// Minimal single-step inference for wrapped policy (expects qpos(26), qvel(25), command(25), prev_policy(12))
+py::array_t<float> ONNXWrappedPolicyStep(
+    const mjModel* model,
+    mjData*        data,
+    const std::string& onnx_model_path,
+    const py::array_t<float>& command,
+    const py::array_t<float>& prev_policy
 );

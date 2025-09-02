@@ -5,6 +5,8 @@
 #include <vector>
 #include <iostream>
 #include <omp.h>
+#include <string>
+#include "onnx_interface_wrapped.h"
 
 namespace py = pybind11;
 
@@ -130,6 +132,37 @@ py::array_t<double> make_array(std::vector<double>& buf,
     );
 }
 
+// Removed local ONNXWrappedPolicy (now in onnx_interface_wrapped.{h,cpp})
+
+py::array_t<float> ONNXWrappedPolicyStep(
+    const mjModel* model,
+    mjData*        data,
+    const std::string& onnx_model_path,
+    const py::array_t<float>& command,
+    const py::array_t<float>& prev_policy
+) {
+    if (command.ndim() != 1 || command.shape(0) < 25) {
+        throw std::runtime_error("command must be 1-D with length >= 25");
+    }
+    if (prev_policy.ndim() != 1 || prev_policy.shape(0) < 12) {
+        throw std::runtime_error("prev_policy must be 1-D with length >= 12");
+    }
+
+    const double* qpos_ptr = data->qpos;
+    const double* qvel_ptr = data->qvel;
+    const float* cmd_ptr = command.data();
+    const float* prev_ptr = prev_policy.data();
+
+    static std::unique_ptr<ONNXWrappedPolicy> policy;
+    if (!policy) {
+        policy = std::make_unique<ONNXWrappedPolicy>(onnx_model_path);
+    }
+
+    std::vector<float> ctrl = policy->run(qpos_ptr, model->nq, qvel_ptr, model->nv, cmd_ptr, (int)command.shape(0), prev_ptr, (int)prev_policy.shape(0));
+    return py::array_t<float>(ctrl.size(), ctrl.data());
+}
+
+
 ONNXInference::ONNXInference(const std::string& model_path) {
     try {
         env_ = std::make_unique<Ort::Env>(ORT_LOGGING_LEVEL_WARNING, "ONNXInference");
@@ -224,10 +257,7 @@ py::tuple ONNXPolicyRollout(
     const py::array_t<double>&         x0,
     int                                horizon,
     const std::string&                 onnx_model_path,
-    int                                state_history_length,
-    int                                action_history_length,
-    int                                inference_frequency,
-    const py::array_t<double>&         additional_inputs
+    const py::array_t<double>&         commands
 ) {
     int B = (int)models.size();
     if (B == 0 || B != (int)data.size()) {
@@ -248,25 +278,29 @@ py::tuple ONNXPolicyRollout(
     }
     const double* x0_ptr = x0.data();
 
-    // Parse additional inputs
-    std::vector<double> additional_input_data;
-    int additional_input_dim = 0;
-    if (additional_inputs.size() > 0) {
-        if (additional_inputs.ndim() == 2 && additional_inputs.shape(0) == B) {
-            additional_input_dim = additional_inputs.shape(1);
-            additional_input_data.resize(B * additional_input_dim);
-            std::memcpy(additional_input_data.data(), additional_inputs.data(),
-                       B * additional_input_dim * sizeof(double));
-        } else if (additional_inputs.ndim() == 1) {
-            // Broadcast to all rollouts
-            additional_input_dim = additional_inputs.shape(0);
-            additional_input_data.resize(B * additional_input_dim);
+    // Parse commands (per-step length-25 vectors)
+    std::vector<double> commands_buf;
+    bool has_commands = false;
+    if (commands.size() > 0) {
+        has_commands = true;
+        if (commands.ndim() == 2) {
+            if (commands.shape(0) != B || commands.shape(1) != horizon * 25) {
+                throw std::runtime_error("commands must have shape (B, horizon*25)");
+            }
+            commands_buf.resize(B * horizon * 25);
+            std::memcpy(commands_buf.data(), commands.data(), B * horizon * 25 * sizeof(double));
+        } else if (commands.ndim() == 1) {
+            if (commands.shape(0) != 25) {
+                throw std::runtime_error("commands 1D must have length 25");
+            }
+            commands_buf.resize(B * horizon * 25);
             for (int b = 0; b < B; ++b) {
-                std::memcpy(&additional_input_data[b * additional_input_dim],
-                           additional_inputs.data(), additional_input_dim * sizeof(double));
+                for (int t = 0; t < horizon; ++t) {
+                    std::memcpy(&commands_buf[(b * horizon + t) * 25], commands.data(), 25 * sizeof(double));
+                }
             }
         } else {
-            throw std::runtime_error("additional_inputs must be 1D or 2D array");
+            throw std::runtime_error("commands must be 1D or 2D");
         }
     }
 
@@ -275,26 +309,13 @@ py::tuple ONNXPolicyRollout(
     std::vector<double> actions_buf(B * horizon * nu);
     std::vector<double> sens_buf(B * horizon * nsens);
 
-    // Create thread-local ONNX models and states
-    std::vector<std::unique_ptr<ONNXInference>> onnx_models(B);
-    std::vector<PolicyThreadState> thread_states;
-    thread_states.reserve(B);
-
     {
         py::gil_scoped_release release;
-
-        // Initialize thread states
-        for (int i = 0; i < B; i++) {
-            thread_states.emplace_back(state_history_length, action_history_length, nstate, nu);
-            thread_states[i].initialize_onnx_model(onnx_model_path);
-            thread_states[i].inference_frequency = inference_frequency;
-        }
 
         #pragma omp parallel for
         for (int i = 0; i < B; i++) {
             try {
                 mjData* d = data[i];
-                PolicyThreadState& thread_state = thread_states[i];
 
                 // set initial qpos+qvel for this batch
                 d->time = 0.0;
@@ -310,85 +331,23 @@ py::tuple ONNXPolicyRollout(
                 // Store initial state
                 for (int j = 0; j < nq; j++) st_ptr[j] = d->qpos[j];
                 for (int j = 0; j < nv; j++) st_ptr[nq + j] = d->qvel[j];
-
-                // Add initial state to history
                 std::vector<double> current_state(nstate);
                 for (int j = 0; j < nq; j++) current_state[j] = d->qpos[j];
                 for (int j = 0; j < nv; j++) current_state[nq + j] = d->qvel[j];
-                thread_state.state_history.push(current_state);
+
+                // Create policy instance per batch item
+                ONNXWrappedPolicy policy(onnx_model_path);
+                std::vector<float> prev(12, 0.0f);
 
                 for (int t = 0; t < horizon; t++) {
-                    std::vector<double> action(nu, 0.0);  // Default zero action
-
-                    // Always go through ONNX inference (additional inputs are part of the ONNX input vector)
-                    if (inference_frequency > 0 && (t + 1) % inference_frequency == 0) {
-                        std::vector<double> addl_inputs;
-                        if (additional_input_dim > 0) {
-                            // If additional inputs are time-distributed, slice per timestep using stride = dim/horizon
-                            if (additional_input_dim % horizon == 0) {
-                                const int stride = additional_input_dim / horizon;
-                                const int base = (i * additional_input_dim) + (t * stride);
-                                addl_inputs.assign(
-                                    &additional_input_data[base],
-                                    &additional_input_data[base + stride]
-                                );
-                            } else {
-                                // Constant per batch
-                                addl_inputs.assign(
-                                    &additional_input_data[i * additional_input_dim],
-                                    &additional_input_data[(i + 1) * additional_input_dim]
-                                );
-                            }
-                        }
-
-                        // If the sliced additional inputs already match the ONNX input length, pass-through directly
-                        std::vector<int64_t> expected_shape = thread_state.onnx_model->get_input_shape();
-                        size_t expected_len = (expected_shape.size() >= 2 && expected_shape[0] == 1) ? (size_t)expected_shape[1] : 0;
-                        std::vector<float> onnx_input;
-                        std::vector<int64_t> input_shape;
-                        if (expected_len > 0 && addl_inputs.size() == expected_len) {
-                            onnx_input.reserve(addl_inputs.size());
-                            for (double v : addl_inputs) onnx_input.push_back(static_cast<float>(v));
-                            input_shape = {1, (int64_t)onnx_input.size()};
-                        } else {
-                            onnx_input = thread_state.prepare_onnx_input(addl_inputs);
-                            input_shape = {1, (int64_t)onnx_input.size()};
-                        }
-                        std::vector<float> onnx_output = thread_state.onnx_model->run_inference(onnx_input, input_shape);
-                        if ((int)onnx_output.size() == 12 && nu >= 19) {
-                            // Post-process: scale legs, pass arm command from additional inputs if provided
-                            const double scale = 0.2;
-                            for (int j = 0; j < 12; ++j) {
-                                action[j] = scale * static_cast<double>(onnx_output[j]);
-                            }
-                            // Additional inputs expected layout: [torso_vel(3), arm_cmd(7), leg_cmd(12 optional), torso_pos(3 optional)]
-                            if ((int)addl_inputs.size() >= 10) {
-                                for (int j = 0; j < 7; ++j) {
-                                    action[12 + j] = addl_inputs[3 + j];
-                                }
-                            }
-                            // Optional leg override (first non-zero 3-d segment wins)
-                            if ((int)addl_inputs.size() >= 22) {
-                                auto seg_nonzero = [&](int off) {
-                                    double s = 0.0; for (int k = 0; k < 3; ++k) s += std::abs(addl_inputs[10 + off + k]);
-                                    return s > 0.0;
-                                };
-                                if (seg_nonzero(0)) { for (int k = 0; k < 3; ++k) action[0 + k] = addl_inputs[10 + 0 + k]; }
-                                else if (seg_nonzero(3)) { for (int k = 0; k < 3; ++k) action[3 + k] = addl_inputs[10 + 3 + k]; }
-                                else if (seg_nonzero(6)) { for (int k = 0; k < 3; ++k) action[6 + k] = addl_inputs[10 + 6 + k]; }
-                                else if (seg_nonzero(9)) { for (int k = 0; k < 3; ++k) action[9 + k] = addl_inputs[10 + 9 + k]; }
-                            }
-                        } else {
-                            for (int j = 0; j < nu && j < (int)onnx_output.size(); j++) {
-                                action[j] = static_cast<double>(onnx_output[j]);
-                            }
-                        }
+                    std::vector<float> prev_out = prev;  // currently zeros
+                    float cmd_step[25] = {0};
+                    if (has_commands) {
+                        const int base = (i * horizon + t) * 25;
+                        for (int k = 0; k < 25; ++k) cmd_step[k] = static_cast<float>(commands_buf[base + k]);
                     }
-
-                    // Apply action to simulation
-                    for (int j = 0; j < nu; j++) {
-                        d->ctrl[j] = action[j];
-                    }
+                    std::vector<float> ctrl = policy.run(d->qpos, nq, d->qvel, nv, cmd_step, 25, prev_out.data(), 12);
+                    for (int j = 0; j < nu && j < (int)ctrl.size(); j++) d->ctrl[j] = ctrl[j];
 
                     // Step simulation
                     mj_step(models[i], d);
@@ -401,16 +360,10 @@ py::tuple ONNXPolicyRollout(
                     for (int j = 0; j < nstate; j++) {
                         st_ptr[(t + 1) * nstate + j] = current_state[j];
                     }
-                    for (int j = 0; j < nu; j++) {
-                        act_ptr[t * nu + j] = action[j];
-                    }
+                    for (int j = 0; j < nu && j < (int)ctrl.size(); j++) act_ptr[t * nu + j] = ctrl[j];
                     for (int j = 0; j < nsens; j++) {
                         se_ptr[t * nsens + j] = d->sensordata[j];
                     }
-
-                    // Update histories for next iteration
-                    thread_state.state_history.push(current_state);
-                    thread_state.action_history.push(action);
                 }
 
             } catch (const std::exception& e) {
@@ -446,10 +399,7 @@ py::tuple PersistentONNXPolicyRollout(
     const py::array_t<double>&         x0,
     int                                horizon,
     const std::string&                 onnx_model_path,
-    int                                state_history_length,
-    int                                action_history_length,
-    int                                inference_frequency,
-    const py::array_t<double>&         additional_inputs
+    const py::array_t<double>&         commands
 ) {
     int B = (int)models.size();
     if (B == 0 || B != (int)data.size()) {
@@ -470,25 +420,29 @@ py::tuple PersistentONNXPolicyRollout(
     }
     const double* x0_ptr = x0.data();
 
-    // Parse additional inputs
-    std::vector<double> additional_input_data;
-    int additional_input_dim = 0;
-    if (additional_inputs.size() > 0) {
-        if (additional_inputs.ndim() == 2 && additional_inputs.shape(0) == B) {
-            additional_input_dim = additional_inputs.shape(1);
-            additional_input_data.resize(B * additional_input_dim);
-            std::memcpy(additional_input_data.data(), additional_inputs.data(),
-                       B * additional_input_dim * sizeof(double));
-        } else if (additional_inputs.ndim() == 1) {
-            // Broadcast to all rollouts
-            additional_input_dim = additional_inputs.shape(0);
-            additional_input_data.resize(B * additional_input_dim);
+    // Parse commands
+    std::vector<double> commands_buf;
+    bool has_commands = false;
+    if (commands.size() > 0) {
+        has_commands = true;
+        if (commands.ndim() == 2) {
+            if (commands.shape(0) != B || commands.shape(1) != horizon * 25) {
+                throw std::runtime_error("commands must have shape (B, horizon*25)");
+            }
+            commands_buf.resize(B * horizon * 25);
+            std::memcpy(commands_buf.data(), commands.data(), B * horizon * 25 * sizeof(double));
+        } else if (commands.ndim() == 1) {
+            if (commands.shape(0) != 25) {
+                throw std::runtime_error("commands 1D must have length 25");
+            }
+            commands_buf.resize(B * horizon * 25);
             for (int b = 0; b < B; ++b) {
-                std::memcpy(&additional_input_data[b * additional_input_dim],
-                           additional_inputs.data(), additional_input_dim * sizeof(double));
+                for (int t = 0; t < horizon; ++t) {
+                    std::memcpy(&commands_buf[(b * horizon + t) * 25], commands.data(), 25 * sizeof(double));
+                }
             }
         } else {
-            throw std::runtime_error("additional_inputs must be 1D or 2D array");
+            throw std::runtime_error("commands must be 1D or 2D");
         }
     }
 
@@ -505,14 +459,9 @@ py::tuple PersistentONNXPolicyRollout(
 
         pool->execute_parallel([&](int i) {
             try {
-                // Get thread-local state
-                PolicyThreadState* thread_state = PolicyThreadStateManager::instance()
-                    .get_thread_state(nstate, nu, state_history_length, action_history_length);
-
-                thread_state->reset();
-                thread_state->initialize_onnx_model(onnx_model_path);
-                thread_state->inference_frequency = inference_frequency;
-
+                // Create per-thread policy
+                ONNXWrappedPolicy policy(onnx_model_path);
+                std::vector<float> prev(12, 0.0f);
                 mjData* d = data[i];
 
                 // set initial qpos+qvel for this batch
@@ -530,70 +479,20 @@ py::tuple PersistentONNXPolicyRollout(
                 for (int j = 0; j < nq; j++) st_ptr[j] = d->qpos[j];
                 for (int j = 0; j < nv; j++) st_ptr[nq + j] = d->qvel[j];
 
-                // Add initial state to history
                 std::vector<double> current_state(nstate);
                 for (int j = 0; j < nq; j++) current_state[j] = d->qpos[j];
                 for (int j = 0; j < nv; j++) current_state[nq + j] = d->qvel[j];
-                thread_state->state_history.push(current_state);
 
                 for (int t = 0; t < horizon; t++) {
                     std::vector<double> action(nu, 0.0);  // Default zero action
 
-                    // Always run ONNX inference (no pass-through in C++)
-                    if (inference_frequency > 0 && (t + 1) % inference_frequency == 0) {
-                        std::vector<double> addl_inputs;
-                        if (additional_input_dim == horizon * nu) {
-                            const int base = (i * additional_input_dim) + (t * nu);
-                            addl_inputs.assign(
-                                &additional_input_data[base],
-                                &additional_input_data[base + nu]
-                            );
-                        } else if (additional_input_dim > 0) {
-                            addl_inputs.assign(
-                                &additional_input_data[i * additional_input_dim],
-                                &additional_input_data[(i + 1) * additional_input_dim]
-                            );
-                        }
-                        std::vector<float> onnx_input = thread_state->prepare_onnx_input(addl_inputs);
-                        std::vector<int64_t> input_shape = {1, (int64_t)onnx_input.size()};
-                        std::vector<float> onnx_output = thread_state->onnx_model->run_inference(onnx_input, input_shape);
-                        if ((int)onnx_output.size() == 12 && nu >= 19) {
-                            // Post-process legs
-                            const double scale = 0.2;
-                            for (int j = 0; j < 12; ++j) {
-                                action[j] = scale * static_cast<double>(onnx_output[j]);
-                            }
-
-                            // Arm passthrough from additional inputs if provided
-                            // Expected layout: [torso_vel(3), arm_cmd(7), leg_cmd(12 optional), torso_pos(3 optional)]
-                            if ((int)addl_inputs.size() >= 10) {
-                                for (int j = 0; j < 7 && (12 + j) < nu; ++j) {
-                                    action[12 + j] = addl_inputs[3 + j];
-                                }
-                            }
-
-                            // Optional leg override if leg_cmd provided (first non-zero 3-d segment wins)
-                            if ((int)addl_inputs.size() >= 22) {
-                                auto seg_nonzero = [&](int off) {
-                                    double s = 0.0; for (int k = 0; k < 3; ++k) s += std::abs(addl_inputs[10 + off + k]);
-                                    return s > 0.0;
-                                };
-                                if (seg_nonzero(0)) {
-                                    for (int k = 0; k < 3; ++k) action[0 + k] = addl_inputs[10 + 0 + k];
-                                } else if (seg_nonzero(3)) {
-                                    for (int k = 0; k < 3; ++k) action[3 + k] = addl_inputs[10 + 3 + k];
-                                } else if (seg_nonzero(6)) {
-                                    for (int k = 0; k < 3; ++k) action[6 + k] = addl_inputs[10 + 6 + k];
-                                } else if (seg_nonzero(9)) {
-                                    for (int k = 0; k < 3; ++k) action[9 + k] = addl_inputs[10 + 9 + k];
-                                }
-                            }
-                        } else {
-                            for (int j = 0; j < nu && j < (int)onnx_output.size(); j++) {
-                                action[j] = static_cast<double>(onnx_output[j]);
-                            }
-                        }
+                    float cmd_step[25] = {0};
+                    if (has_commands) {
+                        const int base = (i * horizon + t) * 25;
+                        for (int k = 0; k < 25; ++k) cmd_step[k] = static_cast<float>(commands_buf[base + k]);
                     }
+                    std::vector<float> ctrl = policy.run(d->qpos, nq, d->qvel, nv, cmd_step, 25, prev.data(), 12);
+                    for (int j = 0; j < nu && j < (int)ctrl.size(); ++j) action[j] = ctrl[j];
 
                     // Apply action to simulation
                     for (int j = 0; j < nu; j++) {
@@ -618,9 +517,7 @@ py::tuple PersistentONNXPolicyRollout(
                         se_ptr[t * nsens + j] = d->sensordata[j];
                     }
 
-                    // Update histories for next iteration
-                    thread_state->state_history.push(current_state);
-                    thread_state->action_history.push(action);
+                    // No histories to maintain
                 }
 
             } catch (const std::exception& e) {

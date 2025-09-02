@@ -8,7 +8,7 @@ controller_config_overrides:
     rollout_backend: "onnx_policy_persistent"
     # onnx_model_path: "dev/dummy_spot_policy_h2a2.onnx"
     # onnx_model_path: "dev/dummy_spot_policy.onnx"
-    onnx_model_path: "judo_cpp/policy/xinghao_policy_end2end.onnx"
+    onnx_model_path: "judo_cpp/policy/xinghao_policy_wrapped_torch.onnx"
     onnx_state_history_length: 0
     onnx_action_history_length: 0
     onnx_inference_frequency: 1

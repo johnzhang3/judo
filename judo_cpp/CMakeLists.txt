@@ -80,6 +80,7 @@ include_directories(${ONNXRUNTIME_INCLUDE_DIR})
 find_package(pybind11 REQUIRED)
 pybind11_add_module(_judo_cpp
   bindings.cpp
+  onnx_interface_wrapped.cpp
   onnx_rollout.cpp
 )
 execute_process(
