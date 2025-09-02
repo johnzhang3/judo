@@ -323,25 +323,65 @@ py::tuple ONNXPolicyRollout(
                     // Always go through ONNX inference (additional inputs are part of the ONNX input vector)
                     if (inference_frequency > 0 && (t + 1) % inference_frequency == 0) {
                         std::vector<double> addl_inputs;
-                        if (additional_input_dim == horizon * nu) {
-                            // Use only the next candidate action (nu) from the provided plan for this timestep
-                            const int base = (i * additional_input_dim) + (t * nu);
-                            addl_inputs.assign(
-                                &additional_input_data[base],
-                                &additional_input_data[base + nu]
-                            );
-                        } else if (additional_input_dim > 0) {
-                            addl_inputs.assign(
-                                &additional_input_data[i * additional_input_dim],
-                                &additional_input_data[(i + 1) * additional_input_dim]
-                            );
+                        if (additional_input_dim > 0) {
+                            // If additional inputs are time-distributed, slice per timestep using stride = dim/horizon
+                            if (additional_input_dim % horizon == 0) {
+                                const int stride = additional_input_dim / horizon;
+                                const int base = (i * additional_input_dim) + (t * stride);
+                                addl_inputs.assign(
+                                    &additional_input_data[base],
+                                    &additional_input_data[base + stride]
+                                );
+                            } else {
+                                // Constant per batch
+                                addl_inputs.assign(
+                                    &additional_input_data[i * additional_input_dim],
+                                    &additional_input_data[(i + 1) * additional_input_dim]
+                                );
+                            }
                         }
 
-                        std::vector<float> onnx_input = thread_state.prepare_onnx_input(addl_inputs);
-                        std::vector<int64_t> input_shape = {1, (int64_t)onnx_input.size()};
+                        // If the sliced additional inputs already match the ONNX input length, pass-through directly
+                        std::vector<int64_t> expected_shape = thread_state.onnx_model->get_input_shape();
+                        size_t expected_len = (expected_shape.size() >= 2 && expected_shape[0] == 1) ? (size_t)expected_shape[1] : 0;
+                        std::vector<float> onnx_input;
+                        std::vector<int64_t> input_shape;
+                        if (expected_len > 0 && addl_inputs.size() == expected_len) {
+                            onnx_input.reserve(addl_inputs.size());
+                            for (double v : addl_inputs) onnx_input.push_back(static_cast<float>(v));
+                            input_shape = {1, (int64_t)onnx_input.size()};
+                        } else {
+                            onnx_input = thread_state.prepare_onnx_input(addl_inputs);
+                            input_shape = {1, (int64_t)onnx_input.size()};
+                        }
                         std::vector<float> onnx_output = thread_state.onnx_model->run_inference(onnx_input, input_shape);
-                        for (int j = 0; j < nu && j < (int)onnx_output.size(); j++) {
-                            action[j] = static_cast<double>(onnx_output[j]);
+                        if ((int)onnx_output.size() == 12 && nu >= 19) {
+                            // Post-process: scale legs, pass arm command from additional inputs if provided
+                            const double scale = 0.2;
+                            for (int j = 0; j < 12; ++j) {
+                                action[j] = scale * static_cast<double>(onnx_output[j]);
+                            }
+                            // Additional inputs expected layout: [torso_vel(3), arm_cmd(7), leg_cmd(12 optional), torso_pos(3 optional)]
+                            if ((int)addl_inputs.size() >= 10) {
+                                for (int j = 0; j < 7; ++j) {
+                                    action[12 + j] = addl_inputs[3 + j];
+                                }
+                            }
+                            // Optional leg override (first non-zero 3-d segment wins)
+                            if ((int)addl_inputs.size() >= 22) {
+                                auto seg_nonzero = [&](int off) {
+                                    double s = 0.0; for (int k = 0; k < 3; ++k) s += std::abs(addl_inputs[10 + off + k]);
+                                    return s > 0.0;
+                                };
+                                if (seg_nonzero(0)) { for (int k = 0; k < 3; ++k) action[0 + k] = addl_inputs[10 + 0 + k]; }
+                                else if (seg_nonzero(3)) { for (int k = 0; k < 3; ++k) action[3 + k] = addl_inputs[10 + 3 + k]; }
+                                else if (seg_nonzero(6)) { for (int k = 0; k < 3; ++k) action[6 + k] = addl_inputs[10 + 6 + k]; }
+                                else if (seg_nonzero(9)) { for (int k = 0; k < 3; ++k) action[9 + k] = addl_inputs[10 + 9 + k]; }
+                            }
+                        } else {
+                            for (int j = 0; j < nu && j < (int)onnx_output.size(); j++) {
+                                action[j] = static_cast<double>(onnx_output[j]);
+                            }
                         }
                     }
 
@@ -517,8 +557,41 @@ py::tuple PersistentONNXPolicyRollout(
                         std::vector<float> onnx_input = thread_state->prepare_onnx_input(addl_inputs);
                         std::vector<int64_t> input_shape = {1, (int64_t)onnx_input.size()};
                         std::vector<float> onnx_output = thread_state->onnx_model->run_inference(onnx_input, input_shape);
-                        for (int j = 0; j < nu && j < (int)onnx_output.size(); j++) {
-                            action[j] = static_cast<double>(onnx_output[j]);
+                        if ((int)onnx_output.size() == 12 && nu >= 19) {
+                            // Post-process legs
+                            const double scale = 0.2;
+                            for (int j = 0; j < 12; ++j) {
+                                action[j] = scale * static_cast<double>(onnx_output[j]);
+                            }
+
+                            // Arm passthrough from additional inputs if provided
+                            // Expected layout: [torso_vel(3), arm_cmd(7), leg_cmd(12 optional), torso_pos(3 optional)]
+                            if ((int)addl_inputs.size() >= 10) {
+                                for (int j = 0; j < 7 && (12 + j) < nu; ++j) {
+                                    action[12 + j] = addl_inputs[3 + j];
+                                }
+                            }
+
+                            // Optional leg override if leg_cmd provided (first non-zero 3-d segment wins)
+                            if ((int)addl_inputs.size() >= 22) {
+                                auto seg_nonzero = [&](int off) {
+                                    double s = 0.0; for (int k = 0; k < 3; ++k) s += std::abs(addl_inputs[10 + off + k]);
+                                    return s > 0.0;
+                                };
+                                if (seg_nonzero(0)) {
+                                    for (int k = 0; k < 3; ++k) action[0 + k] = addl_inputs[10 + 0 + k];
+                                } else if (seg_nonzero(3)) {
+                                    for (int k = 0; k < 3; ++k) action[3 + k] = addl_inputs[10 + 3 + k];
+                                } else if (seg_nonzero(6)) {
+                                    for (int k = 0; k < 3; ++k) action[6 + k] = addl_inputs[10 + 6 + k];
+                                } else if (seg_nonzero(9)) {
+                                    for (int k = 0; k < 3; ++k) action[9 + k] = addl_inputs[10 + 9 + k];
+                                }
+                            }
+                        } else {
+                            for (int j = 0; j < nu && j < (int)onnx_output.size(); j++) {
+                                action[j] = static_cast<double>(onnx_output[j]);
+                            }
                         }
                     }
 

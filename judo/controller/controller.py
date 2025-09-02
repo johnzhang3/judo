@@ -283,12 +283,12 @@ class Controller:
                 if controls.shape[1] != horizon_steps:
                     controls = controls[:, :horizon_steps, :]
                 plan = controls.reshape(B, horizon_steps * nu)
-                
+                print("debug")
                 self.states, actions, self.sensors = self.rollout_backend.policy_rollout(
                     self.model_data_pairs,
                     curr_state,
                     horizon_steps,
-                    additional_inputs={"plan": plan},
+                    # additional_inputs={"plan": plan},
                 )
                 # Replace rollout_controls with policy-produced actions
                 self.rollout_controls = actions
