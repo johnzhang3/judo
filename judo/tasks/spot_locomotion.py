@@ -97,3 +97,7 @@ class SpotLocomotion(Task[SpotLocomotionConfig]):
         # Reset the height of the robot to a reasonable starting position
         self.data.qpos[2] = 1.5  # Set z position to 1.5 meters
         mujoco.mj_forward(self.model, self.data)
+
+    def optimizer_warm_start(self) -> np.ndarray:
+        """Returns a warm start for the optimizer."""
+        return np.zeros(self.nu)

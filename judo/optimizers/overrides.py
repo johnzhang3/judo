@@ -233,6 +233,7 @@ def set_default_spot_locomotion_overrides() -> None:
     #         "num_nodes": 2,
     #         "num_rollouts": 16,
     #         "use_noise_ramp": False,
+    #         "nu": 25
     #     },
     # )
     # set_config_overrides(
@@ -243,6 +244,7 @@ def set_default_spot_locomotion_overrides() -> None:
     #         "num_rollouts": 16,
     #         "num_elites": 4,
     #         "use_noise_ramp": False,
+    #         "nu": 19
     #     },
     # )
     # set_config_overrides(
@@ -254,4 +256,4 @@ def set_default_spot_locomotion_overrides() -> None:
     #         "use_noise_ramp": False,
     #     },
     # )
-    pass
+    # pass

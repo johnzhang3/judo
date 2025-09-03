@@ -149,6 +149,7 @@ class RolloutBackend:
             # shape = (num_rollouts, num_states + 1)
             x0_batched = np.tile(x0, (len(ms), 1))
             full_states = np.concatenate([time.time() * np.ones((len(ms), 1)), x0_batched], axis=-1)
+            controls = np.zeros((len(ms), controls.shape[1], nu))
             assert full_states.shape[-1] == nq + nv + 1
             assert full_states.ndim == 2
             assert controls.ndim == 3
