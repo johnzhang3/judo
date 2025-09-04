@@ -78,6 +78,7 @@ class Controller:
 
         self.states = np.zeros((self.optimizer_cfg.num_rollouts, self.num_timesteps, self.model.nq + self.model.nv))
         self.sensors = np.zeros((self.optimizer_cfg.num_rollouts, self.num_timesteps, self.model.nsensordata))
+        # Rollout controls are always in MuJoCo actuator space
         self.rollout_controls = np.zeros((self.optimizer_cfg.num_rollouts, self.num_timesteps, self.model.nu))
         self.rewards = np.zeros((self.optimizer_cfg.num_rollouts,))
         self.reset()
@@ -140,6 +141,7 @@ class Controller:
 
         # Adjust time + move policy forward.
         new_times = curr_time + self.spline_timesteps
+        # Evaluate current nominal spline in task space
         nominal_knots = self.spline(new_times)
         nominal_knots_normalized = self.action_normalizer.normalize(nominal_knots)
 
@@ -169,18 +171,20 @@ class Controller:
         # run optimization loop
         i = 0
         while i < self.max_opt_iters and not self.optimizer.stop_cond():
-            # sample controls and clamp to action bounds
+            # sample task-space controls and clamp to task-space bounds
             candidate_knots_normalized = self.optimizer.sample_control_knots(nominal_knots_normalized)
             candidate_knots_normalized = np.clip(
                 candidate_knots_normalized,
-                self.action_normalizer.normalize(self.task.actuator_ctrlrange[:, 0]),
-                self.action_normalizer.normalize(self.task.actuator_ctrlrange[:, 1]),
+                self.action_normalizer.normalize(self.task.task_ctrlrange[:, 0]),
+                self.action_normalizer.normalize(self.task.task_ctrlrange[:, 1]),
             )
             self.candidate_knots = self.action_normalizer.denormalize(candidate_knots_normalized)
 
-            # Evaluate rollout controls at sim timesteps.
+            # Evaluate rollout task-space controls at sim timesteps, then map to MuJoCo space.
             candidate_splines = make_spline(new_times, self.candidate_knots, self.spline_order)
-            self.rollout_controls = candidate_splines(curr_time + self.rollout_times)
+            rollout_controls_task = candidate_splines(curr_time + self.rollout_times)
+            # Vectorized mapping: (..., task_nu) -> (..., model.nu)
+            self.rollout_controls = self.task.map_task_to_mj(rollout_controls_task)
 
             # Roll out dynamics with action sequences.
             self.task.pre_rollout(curr_state, self.task_cfg)
@@ -213,6 +217,7 @@ class Controller:
             i += 1
 
         # Update nominal controls and spline.
+        # Keep nominal knots in task space
         self.nominal_knots = self.action_normalizer.denormalize(nominal_knots_normalized)
         self.times = new_times
         self.update_spline(self.times, self.nominal_knots)
@@ -283,11 +288,12 @@ class Controller:
         """Initialize the action normalizer."""
         action_normalizer_kwargs = {}
         if self.action_normalizer_type == "min_max":
-            action_normalizer_kwargs["min"] = self.task.actuator_ctrlrange[:, 0]
-            action_normalizer_kwargs["max"] = self.task.actuator_ctrlrange[:, 1]
+            action_normalizer_kwargs["min"] = self.task.task_ctrlrange[:, 0]
+            action_normalizer_kwargs["max"] = self.task.task_ctrlrange[:, 1]
         elif self.action_normalizer_type == "running":
             action_normalizer_kwargs["init_std"] = 1.0  # TODO(yunhai): make this configurable
-        return make_normalizer(self.action_normalizer_type, self.model.nu, **action_normalizer_kwargs)
+        # Normalizer dimension is task-space
+        return make_normalizer(self.action_normalizer_type, self.task.task_nu, **action_normalizer_kwargs)
 
 
 def make_spline(times: np.ndarray, controls: np.ndarray, spline_order: str) -> interp1d:

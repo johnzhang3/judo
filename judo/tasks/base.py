@@ -71,12 +71,30 @@ class Task(ABC, Generic[ConfigT]):
         return self.model.nu
 
     @property
+    def task_nu(self) -> int:
+        """Number of task-space control inputs.
+
+        Defaults to the MuJoCo actuator dimension. Override in subclasses to
+        decouple task action space from model action space.
+        """
+        return self.model.nu
+
+    @property
     def actuator_ctrlrange(self) -> np.ndarray:
         """Mujoco actuator limits for this task."""
         limits = self.model.actuator_ctrlrange
         limited: np.ndarray = self.model.actuator_ctrllimited.astype(bool)  # type: ignore
         limits[~limited] = np.array([-np.inf, np.inf], dtype=limits.dtype)  # if not limited, set to inf
         return limits  # type: ignore
+
+    @property
+    def task_ctrlrange(self) -> np.ndarray:
+        """Task-space control limits. Shape (task_nu, 2).
+
+        Defaults to the actuator control range when the spaces are identical.
+        Override in subclasses when `task_nu` != `nu`.
+        """
+        return self.actuator_ctrlrange
 
     def reset(self) -> None:
         """Reset behavior for task. Sets config + velocities to zeros."""
@@ -134,7 +152,20 @@ class Task(ABC, Generic[ConfigT]):
 
         This is used to provide an initial guess for the optimizer when optimizing the task before any iterations.
         """
-        return np.zeros(self.nu)
+        return np.zeros(self.task_nu)
+
+    def map_task_to_mj(
+        self,
+        u_task: np.ndarray,
+        state: np.ndarray | None = None,
+        time: float | None = None,
+    ) -> np.ndarray:
+        """Map task-space controls to MuJoCo actuator-space controls.
+
+        By default, this is an identity mapping (spaces are the same). Subclasses
+        can override to implement custom mappings (e.g., synergies or NN inference).
+        """
+        return u_task
 
     def get_sensor_start_index(self, sensor_name: str) -> int:
         """Returns the starting index of a sensor in the 'sensors' array given the sensor's name.

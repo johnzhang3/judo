@@ -58,7 +58,8 @@ class ControllerNode(DoraNode):
         self.task = self.task_cls()
         self.task_config = self.task_config_cls()
         self.optimizer_config = self.optimizer_config_cls()
-        self.optimizer = self.optimizer_cls(self.optimizer_config, self.task.nu)
+        # Optimizer operates in task-space
+        self.optimizer = self.optimizer_cls(self.optimizer_config, self.task.task_nu)
 
         self.controller_config_cls = ControllerConfig
         self.controller_config = self.controller_config_cls()
@@ -88,7 +89,8 @@ class ControllerNode(DoraNode):
             task = task_cls()
             task_config = task_config_cls()
             self.optimizer_config.set_override(new_task)
-            optimizer = self.optimizer_cls(self.optimizer_config, task.nu)
+            # Optimizer operates in task-space for the new task
+            optimizer = self.optimizer_cls(self.optimizer_config, task.task_nu)
             with self.lock:
                 # update the task and optimizer
                 self.task_cls = task_cls
@@ -134,7 +136,7 @@ class ControllerNode(DoraNode):
         if optimizer_entry is not None:
             optimizer_cls, optimizer_config_cls = optimizer_entry
             optimizer_config = optimizer_config_cls()
-            optimizer = optimizer_cls(optimizer_config, self.task.nu)
+            optimizer = optimizer_cls(optimizer_config, self.task.task_nu)
             with self.lock:
                 self.optimizer = optimizer
                 self.controller.optimizer = optimizer
@@ -165,8 +167,9 @@ class ControllerNode(DoraNode):
 
     def write_controls(self) -> None:
         """Util that publishes the current controller spline."""
-        # send control action
-        spline_data = SplineData(self.controller.times, self.controller.nominal_knots)
+        # send control action: publish MuJoCo-space knots (map from task-space)
+        mapped_knots = self.task.map_task_to_mj(self.controller.nominal_knots)
+        spline_data = SplineData(self.controller.times, mapped_knots)
         arr, metadata = to_arrow(spline_data)
         self.node.send_output("controls", arr, metadata)
 
