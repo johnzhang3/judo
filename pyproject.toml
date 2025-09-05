@@ -179,7 +179,3 @@ judo-rai = { path = ".", editable = true }
 default = { solve-group = "default" }
 docs = { features = ["docs"], solve-group = "default" }
 dev = { features = ["dev", "docs"], solve-group = "default" }
-
-[tool.pixi.target.osx-arm64.dependencies]
-msgspec = ">=0.19.0,<0.20"
-psutil = ">=7.0.0,<8"
