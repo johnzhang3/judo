@@ -2,8 +2,6 @@
 
 ## Added
 * Added support for arm-based Macs (@johnzhang3, #87)
-
-## Added
 * Included functions for simpler model indexing for sensors and joints (@bhung-bdai, @alberthli, #76)
 
 ## Fixed
