@@ -11,6 +11,7 @@ from judo.gui import slider
 from judo.tasks.base import Task, TaskConfig
 from judo.tasks.cost_functions import quadratic_norm
 from judo.utils.fields import np_1d_field
+from judo.utils.mujoco_cpp import RolloutBackend, SimBackend
 
 XML_PATH = str(MODEL_PATH / "xml/cylinder_push.xml")
 
@@ -42,6 +43,9 @@ class CylinderPushNew(Task[CylinderPushNewConfig]):
     def __init__(self, model_path: str = XML_PATH, sim_model_path: str | None = None) -> None:
         """Initializes the cylinder push task."""
         super().__init__(model_path, sim_model_path=sim_model_path)
+        self.RolloutBackend = RolloutBackend
+        self.SimBackend = SimBackend
+
         self.reset()
 
     @property
