@@ -72,6 +72,7 @@ This will start the stack and print a link in the terminal that will open the ap
 ```
 http://localhost:8080
 ```
+(Note: if you developer are on an Mac, we notice sometimes running `judo` for the first time after installing via `pixi shell -e dev` results in an error that goes away after running `judo` again, please open an issue if you experience further problems)
 
 We package `judo` with a few starter tasks and optimizers. If you want to start the simulator with one of these, you can run:
 ```bash
