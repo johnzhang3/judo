@@ -125,7 +125,7 @@ class TorchXinghaoPolicyWrapper(nn.Module):
         legs_with_offset = legs_reordered + self.default_joint_pos[:12].unsqueeze(0)
         arm_cmd = command[3:10].unsqueeze(0)  # [1, 7]
         control = torch.cat([legs_with_offset, arm_cmd], dim=1)  # [1, 19]
-        return control
+        return control, policy_out
 
 
 if __name__ == "__main__":
@@ -137,8 +137,10 @@ if __name__ == "__main__":
     qvel = torch.zeros(25, dtype=torch.float32)
     command = torch.zeros(25, dtype=torch.float32)
     prev = torch.zeros(12, dtype=torch.float32)
-    out = model(qpos, qvel, command, prev)
+    out, policy_out = model(qpos, qvel, command, prev)
     print(out.shape)
     print(out)
+    print(policy_out.shape)
+    print(policy_out)
 
     

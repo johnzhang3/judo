@@ -26,7 +26,7 @@ def main() -> None:
         (qpos, qvel, command, prev),
         args.out,
         input_names=["qpos", "qvel", "command", "prev_policy"],
-        output_names=["control"],
+        output_names=["control", "policy_out"],
         opset_version=17,
         dynamic_axes=None,
     )

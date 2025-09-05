@@ -3,7 +3,7 @@ import mujoco
 
 from judo import MODEL_PATH
 from judo_cpp import persistent_onnx_policy_rollout
-
+from copy import deepcopy
 
 def main() -> None:
     # Load Spot locomotion model
@@ -12,21 +12,22 @@ def main() -> None:
 
     # Create B=1 data
     data = mujoco.MjData(model)
-    models = [model]
-    datas = [data]
+    # copy the model and data 16 times
+    models = [deepcopy(model) for _ in range(16)]
+    datas = [deepcopy(data) for _ in range(16)]
 
     # Initial state x0: (B, nq+nv)
     nq, nv = model.nq, model.nv
-    x0 = np.zeros((1, nq + nv), dtype=np.double)
+    x0 = np.zeros((16, nq + nv), dtype=np.double)
     # Set base quaternion to identity (w=1)
-    x0[0, 3] = 1.0
+    x0[:, 3] = 1.0
 
     # Horizon and model path
     horizon = 10
     onnx_model_path = "judo_cpp/policy/xinghao_policy_wrapped_torch.onnx"
 
     # Commands: provide zeros broadcast, or shape (B, horizon*25)
-    commands = np.zeros((16, horizon, 19), dtype=np.double)
+    commands = np.zeros((16, horizon, 25), dtype=np.double)
 
     # Run rollout
     states, sensors = persistent_onnx_policy_rollout(models, datas, x0, horizon, onnx_model_path, commands)

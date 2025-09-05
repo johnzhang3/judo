@@ -132,32 +132,4 @@ Returns:
       sensors -> shape (B, horizon, nsensordata) - sensor data
 )doc");
 
-    // Minimal single-step wrapped policy inference
-    m.def("onnx_wrapped_policy_step",
-          [](py::handle model,
-             py::handle data,
-             const std::string& onnx_model_path,
-             const py::array_t<float>& command,
-             const py::array_t<float>& prev_policy) {
-              auto m_ptr = reinterpret_cast<const mjModel*>(model.attr("_address").cast<std::uintptr_t>());
-              auto d_ptr = reinterpret_cast<mjData*>(data.attr("_address").cast<std::uintptr_t>());
-              return ONNXWrappedPolicyStep(m_ptr, d_ptr, onnx_model_path, command, prev_policy);
-          },
-          py::arg("model"),
-          py::arg("data"),
-          py::arg("onnx_model_path"),
-          py::arg("command"),
-          py::arg("prev_policy"),
-          R"doc(
-Single ONNX inference using wrapped model.
-
-Inputs:
-  - model, data: MuJoCo handles
-  - onnx_model_path: path to xinghao_policy_wrapped_torch.onnx
-  - command: float32[25]
-  - prev_policy: float32[12]
-
-Returns:
-  - control: float32[19]
-)doc");
 }

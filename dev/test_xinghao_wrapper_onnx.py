@@ -5,7 +5,7 @@ import onnxruntime as ort
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Test Xinghao wrapped ONNX inference")
-    parser.add_argument("--model", type=str, default="judo_cpp/policy/xinghao_policy_wrapped.onnx")
+    parser.add_argument("--model", type=str, default="judo_cpp/policy/xinghao_policy_wrapped_torch.onnx")
     args = parser.parse_args()
 
     sess = ort.InferenceSession(args.model, providers=["CPUExecutionProvider"])
