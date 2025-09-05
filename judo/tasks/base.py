@@ -9,6 +9,8 @@ import mujoco
 import numpy as np
 from mujoco import MjData, MjModel, MjSpec
 
+from judo.utils.mujoco import RolloutBackend, SimBackend
+
 
 @dataclass
 class TaskConfig:
@@ -30,6 +32,9 @@ class Task(ABC, Generic[ConfigT]):
         self.data = MjData(self.model)
         self.model_path = model_path
         self.sim_model = self.model if sim_model_path is None else MjModel.from_xml_path(str(sim_model_path))
+
+        self.RolloutBackend = RolloutBackend
+        self.SimBackend = SimBackend
 
     @property
     def time(self) -> float:
@@ -71,8 +76,8 @@ class Task(ABC, Generic[ConfigT]):
         return self.model.nu
 
     @property
-    def actuator_ctrlrange(self) -> np.ndarray:
-        """Mujoco actuator limits for this task."""
+    def ctrlrange(self) -> np.ndarray:
+        """Mujoco actuator limits for this task. Same as actuator limits for this task."""
         limits = self.model.actuator_ctrlrange
         limited: np.ndarray = self.model.actuator_ctrllimited.astype(bool)  # type: ignore
         limits[~limited] = np.array([-np.inf, np.inf], dtype=limits.dtype)  # if not limited, set to inf
@@ -88,6 +93,20 @@ class Task(ABC, Generic[ConfigT]):
     def dt(self) -> float:
         """Returns Mujoco physics timestep for default physics task."""
         return self.model.opt.timestep
+
+    def task_to_sim_ctrl(self, controls: np.ndarray) -> np.ndarray:
+        """Maps the controls from the optimizer to the controls used in the simulation.
+
+        This can be overridden by tasks that have different control mappings. By default, it is the identity
+        function.
+
+        Args:
+            controls: The controls from the optimizer. Shape=(num_rollouts, T, nu).
+
+        Returns:
+            mapped_controls: The controls to be used in the simulation. Shape=(num_rollouts, T, nu).
+        """
+        return controls
 
     def pre_rollout(self, curr_state: np.ndarray, config: ConfigT) -> None:
         """Pre-rollout behavior for task (does nothing by default).

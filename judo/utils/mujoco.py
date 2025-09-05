@@ -2,10 +2,10 @@
 
 import time
 from copy import deepcopy
-from typing import Literal
+from typing import Callable, Literal
 
 import numpy as np
-from mujoco import MjData, MjModel
+from mujoco import MjData, MjModel, mj_step
 from mujoco.rollout import Rollout
 
 
@@ -20,13 +20,14 @@ def make_model_data_pairs(model: MjModel, num_pairs: int) -> list[tuple[MjModel,
 class RolloutBackend:
     """The backend for conducting multithreaded rollouts."""
 
-    def __init__(self, num_threads: int, backend: Literal["mujoco"]) -> None:
+    def __init__(self, num_threads: int, backend: Literal["mujoco"], task_to_sim_ctrl: Callable) -> None:
         """Initialize the backend with a number of threads."""
         self.backend = backend
         if self.backend == "mujoco":
             self.setup_mujoco_backend(num_threads)
         else:
             raise ValueError(f"Unknown backend: {self.backend}")
+        self.task_to_sim_ctrl = task_to_sim_ctrl
 
     def setup_mujoco_backend(self, num_threads: int) -> None:
         """Setup the mujoco backend."""
@@ -57,15 +58,16 @@ class RolloutBackend:
         # shape = (num_rollouts, num_states + 1)
         x0_batched = np.tile(x0, (len(ms), 1))
         full_states = np.concatenate([time.time() * np.ones((len(ms), 1)), x0_batched], axis=-1)
+        processed_controls = self.task_to_sim_ctrl(controls)
         assert full_states.shape[-1] == nq + nv + 1
         assert full_states.ndim == 2
-        assert controls.ndim == 3
-        assert controls.shape[-1] == nu
-        assert controls.shape[0] == full_states.shape[0]
+        assert processed_controls.ndim == 3
+        assert processed_controls.shape[-1] == nu
+        assert processed_controls.shape[0] == full_states.shape[0]
 
         # rollout
         if self.backend == "mujoco":
-            _states, _out_sensors = self.rollout_func(ms, ds, full_states, controls)
+            _states, _out_sensors = self.rollout_func(ms, ds, full_states, processed_controls)
         else:
             raise ValueError(f"Unknown backend: {self.backend}")
         out_states = np.array(_states)[..., 1:]  # remove time from state
@@ -79,3 +81,16 @@ class RolloutBackend:
             self.setup_mujoco_backend(num_threads)
         else:
             raise ValueError(f"Unknown backend: {self.backend}")
+
+
+class SimBackend:
+    """The backend for conducting simulation."""
+
+    def __init__(self, task_to_sim_ctrl: Callable) -> None:
+        """Initialize the backend."""
+        self.task_to_sim_ctrl = task_to_sim_ctrl
+
+    def sim(self, sim_model: MjModel, sim_data: MjData, sim_controls: np.ndarray) -> None:
+        """Conduct a simulation step."""
+        sim_data.ctrl[:] = self.task_to_sim_ctrl(sim_controls)
+        mj_step(sim_model, sim_data)
