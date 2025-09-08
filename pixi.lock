@@ -763,6 +763,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/onnx-1.18.0-np2py313hb286ac7_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/onnx2torch-1.5.15-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/onnxruntime-1.22.0-py313hd753461_0_cpu.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/onnxruntime-cpp-1.22.0-h641f3bf_0_cpu.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/openjpeg-2.5.3-h55fea9a_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/openssl-3.5.0-h7b32b05_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/optree-0.17.0-py313h7037e92_1.conda
@@ -1009,6 +1010,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/onnx-1.18.0-np2py313hfcf4a03_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/onnx2torch-1.5.15-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/onnxruntime-1.22.0-py313h7bddbbd_0_cpu.conda
+      - conda: https://conda.anaconda.org/conda-forge/osx-64/onnxruntime-cpp-1.22.0-h6c5cfe5_0_cpu.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/openjpeg-2.5.3-h036ada5_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/openssl-3.5.0-hc426f3f_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/optree-0.17.0-py313hc551f4f_1.conda
@@ -1258,6 +1260,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/onnx-1.18.0-np2py313h5e61c4c_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/onnx2torch-1.5.15-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/onnxruntime-1.22.0-py313h69fa487_0_cpu.conda
+      - conda: https://conda.anaconda.org/conda-forge/osx-arm64/onnxruntime-cpp-1.22.0-h8e63784_0_cpu.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/openjpeg-2.5.3-h889cd5d_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/openssl-3.5.2-he92f556_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/optree-0.17.0-py313hc50a443_1.conda
@@ -1466,6 +1469,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/onnx-1.18.0-np2py313h980d884_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/onnx2torch-1.5.15-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/onnxruntime-1.22.0-py313h6b32aa8_0_cpu.conda
+      - conda: https://conda.anaconda.org/conda-forge/win-64/onnxruntime-cpp-1.22.0-h50ebc8d_0_cpu.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/openjpeg-2.5.3-h24db6dd_1.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/openssl-3.5.0-ha4e3fda_1.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/optree-0.17.0-py313hf069bd2_1.conda
@@ -4441,7 +4445,7 @@ packages:
 - pypi: ./
   name: judo-rai
   version: 0.0.4
-  sha256: 00202d0cfd03d2ec90e9d23f34489b0011ac3a10e479c630f0cdf78beaadf8b2
+  sha256: bb728317f696d214a4d97d3a4f8d697095e426a64a708e921a6fbdcc1850c6f5
   requires_dist:
   - dora-utils
   - mujoco
@@ -7755,6 +7759,48 @@ packages:
   - pkg:pypi/onnxruntime?source=hash-mapping
   size: 5601998
   timestamp: 1746979338580
+- conda: https://conda.anaconda.org/conda-forge/linux-64/onnxruntime-cpp-1.22.0-h641f3bf_0_cpu.conda
+  sha256: 13ab55b8c76518a919c2e638c3097ceda6390c37ca835f6d63e823f445494b78
+  md5: 3a016523ee6fc084f891546facf157f5
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - libgcc >=13
+  - libstdcxx >=13
+  license: MIT AND BSL-1.0
+  purls: []
+  size: 16909506
+  timestamp: 1746977910642
+- conda: https://conda.anaconda.org/conda-forge/osx-64/onnxruntime-cpp-1.22.0-h6c5cfe5_0_cpu.conda
+  sha256: dc7b28d2bcf4ea557f08f0772b813b707d2d1977bb90623d0b439486eb8c901b
+  md5: 0f946fab09ba212fd55f266b71f1035f
+  depends:
+  - __osx >=10.15
+  - libcxx >=18
+  license: MIT AND BSL-1.0
+  purls: []
+  size: 10050538
+  timestamp: 1746975685639
+- conda: https://conda.anaconda.org/conda-forge/osx-arm64/onnxruntime-cpp-1.22.0-h8e63784_0_cpu.conda
+  sha256: 09219f022fa7bdf31937e2a5c233d8dfdb5f69b370d646ce998780c9dd586db1
+  md5: b2756b487bab999ab94cd6fce88ccfe1
+  depends:
+  - __osx >=11.0
+  - libcxx >=18
+  license: MIT AND BSL-1.0
+  purls: []
+  size: 8787876
+  timestamp: 1746974833624
+- conda: https://conda.anaconda.org/conda-forge/win-64/onnxruntime-cpp-1.22.0-h50ebc8d_0_cpu.conda
+  sha256: addba20578ab0e9e6dc103623c918c7fb34e11194381bb69e620af81b1856c56
+  md5: ae78a77ceb6859201bc64c87e1001110
+  depends:
+  - ucrt >=10.0.20348.0
+  - vc >=14.3,<15
+  - vc14_runtime >=14.42.34438
+  license: MIT AND BSL-1.0
+  purls: []
+  size: 4017599
+  timestamp: 1746978981957
 - pypi: https://files.pythonhosted.org/packages/2c/8b/90eb44a40476fa0e71e05a0283947cfd74a5d36121a11d926ad6f3193cc4/opencv_python-4.11.0.86-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
   name: opencv-python
   version: 4.11.0.86

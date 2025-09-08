@@ -42,6 +42,7 @@ find_package(pybind11 REQUIRED)
 pybind11_add_module(_judo_cpp
   bindings.cpp
   rollout.cpp
+  rollout_spot.cpp
 )
 execute_process(
   COMMAND ${Python_EXECUTABLE} -c "import site; print(site.getsitepackages()[0])"
@@ -81,6 +82,26 @@ target_link_libraries(_judo_cpp PRIVATE
   OpenMP::OpenMP_CXX
   ${MUJOCO_LIB}
 )
+
+# 6. Link ONNX Runtime from the current environment (expects conda/pixi env)
+if(DEFINED ENV{CONDA_PREFIX})
+  set(CONDA_PREFIX $ENV{CONDA_PREFIX})
+  include_directories("${CONDA_PREFIX}/include")
+  file(GLOB ONNXRUNTIME_LIB_FILES
+       "${CONDA_PREFIX}/lib/libonnxruntime.*"      # Linux/macOS
+       "${CONDA_PREFIX}/Library/lib/onnxruntime.lib"  # Windows import lib
+       "${CONDA_PREFIX}/Library/bin/onnxruntime.dll"  # Windows DLL
+  )
+  if(ONNXRUNTIME_LIB_FILES)
+    list(GET ONNXRUNTIME_LIB_FILES 0 ONNXRUNTIME_LIB)
+    message(STATUS "Linking against ONNX Runtime: ${ONNXRUNTIME_LIB}")
+    target_link_libraries(_judo_cpp PRIVATE ${ONNXRUNTIME_LIB})
+  else()
+    message(WARNING "Could not find ONNX Runtime library under ${CONDA_PREFIX}. Ensure onnxruntime is installed.")
+  endif()
+else()
+  message(WARNING "CONDA_PREFIX not set; skipping ONNX Runtime linking.")
+endif()
 
 # 5. Install the module
 install(TARGETS _judo_cpp DESTINATION judo_cpp)

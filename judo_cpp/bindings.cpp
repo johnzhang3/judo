@@ -4,6 +4,7 @@
 #include <mujoco/mujoco.h>
 
 #include "rollout.h"
+#include "rollout_spot.h"
 
 namespace py = pybind11;
 
@@ -99,5 +100,52 @@ Run a single MuJoCo simulation step.
 
 Returns:
     None
+)doc");
+
+    // Spot Rollout
+    m.def("rollout_spot",
+          [](const py::list& models,
+             const py::list& data,
+             const py::array_t<double>& x0,
+             const py::array_t<double>& controls)
+          {
+              auto models_cpp = getModelVector(models);
+              auto data_cpp   = getDataVector(data);
+              return RolloutSpot(models_cpp, data_cpp, x0, controls);
+          },
+          py::arg("models"),
+          py::arg("data"),
+          py::arg("x0"),
+          py::arg("controls"),
+          R"doc(
+Run parallel MuJoCo rollouts with Spot ONNX policy.
+
+Args:
+    models:   length-B list of mujoco._structs.MjModel
+    data:     length-B list of mujoco._structs.MjData
+    x0:       (B, nq+nv)
+    controls: (B, horizon, command_dim) commands passed to the policy each step
+
+Returns:
+    (states, sensors)
+)doc");
+
+    // Spot Sim
+    m.def("sim_spot",
+          [](py::object model,
+             py::object data,
+             const py::array_t<double>& x0,
+             const py::array_t<double>& controls)
+          {
+              auto model_ptr = reinterpret_cast<const mjModel*>(model.attr("_address").cast<std::uintptr_t>());
+              auto data_ptr  = reinterpret_cast<mjData*>(data.attr("_address").cast<std::uintptr_t>());
+              SimSpot(model_ptr, data_ptr, x0, controls);
+          },
+          py::arg("model"),
+          py::arg("data"),
+          py::arg("x0"),
+          py::arg("controls"),
+          R"doc(
+Run a single MuJoCo step with Spot ONNX policy to generate controls.
 )doc");
 }

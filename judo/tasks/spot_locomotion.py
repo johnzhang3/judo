@@ -12,7 +12,8 @@ from judo.tasks.cost_functions import (
     quadratic_norm,
     smooth_l1_norm,
 )
-from judo.utils.mujoco_cpp import RolloutBackend, SimBackend
+# from judo.utils.mujoco_cpp import RolloutBackend, SimBackend
+from judo.utils.mujoco_spot import RolloutBackend, SimBackend
 
 XML_PATH = str(MODEL_PATH / "xml/spot_locomotion.xml")
 
@@ -40,6 +41,22 @@ class SpotLocomotion(Task[SpotLocomotionConfig]):
         self.RolloutBackend = RolloutBackend
         self.SimBackend = SimBackend
         self.reset()
+
+    @property
+    def nu(self) -> int:
+        """Number of control inputs."""
+        # 13 = torso_vel(3) + arm_cmd(7) + torso_pos(3)
+        # leg_cmd(12) are zeroed and populated in the rollout wrapper
+        return 13
+
+    @property
+    def ctrlrange(self) -> np.ndarray:
+        """Control limits for this task."""
+        return np.array([[-np.inf, np.inf]] * 13)
+
+    def task_to_sim_ctrl(self, controls: np.ndarray) -> np.ndarray:
+        """Maps the controls from the optimizer to the controls used in the simulation."""
+        return controls[..., :19]
 
     def reward(
         self,

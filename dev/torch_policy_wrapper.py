@@ -125,6 +125,20 @@ class TorchXinghaoPolicyWrapper(nn.Module):
         legs_with_offset = legs_reordered + self.default_joint_pos[:12].unsqueeze(0)
         arm_cmd = command[3:10].unsqueeze(0)  # [1, 7]
         control = torch.cat([legs_with_offset, arm_cmd], dim=1)  # [1, 19]
+
+        # Optional leg override (tensorized): if any 3-dof leg cmd group is non-zero, override that leg.
+        # Groups in MuJoCo leg order: FL[0:3], FR[3:6], HL[6:9], HR[9:12]
+        leg_joint_cmd = command[10:22].view(4, 3)  # [4,3]
+        nonzero = (leg_joint_cmd.abs().sum(dim=1, keepdim=True) > 0).to(dtype=leg_joint_cmd.dtype)  # [4,1]
+        priority = torch.tensor([4.0, 3.0, 2.0, 1.0], dtype=leg_joint_cmd.dtype, device=leg_joint_cmd.device).view(4, 1)
+        weights = nonzero * priority  # [4,1]
+        # winner one-hot across groups; remains all-zero if no group is non-zero
+        max_w = weights.max()
+        winner = (weights == max_w).to(dtype=leg_joint_cmd.dtype) * nonzero  # [4,1]
+        mask12 = winner.repeat(1, 3).view(1, 12)  # [1,12]
+        control_leg = control[:, :12]
+        override_vals = leg_joint_cmd.view(1, 12)
+        control[:, :12] = control_leg * (1.0 - mask12) + override_vals * mask12
         return control, policy_out
 
 
@@ -143,4 +157,4 @@ if __name__ == "__main__":
     print(policy_out.shape)
     print(policy_out)
 
-    
+
