@@ -177,6 +177,7 @@ judo-rai = { path = ".", editable = true }
 
 [tool.pixi.dependencies]
 python = ">=3.10"
+onnx2torch = ">=1.5.15,<2"
 
 [tool.pixi.environments]
 default = { solve-group = "default" }
@@ -194,6 +195,7 @@ pyright = "*"
 pytest = "*"
 pytest-cov = "*"
 onnxruntime = "*"
+pytorch = ">=2.7.1,<3"
 
 [tool.pixi.feature.docs.dependencies]
 furo = "*"
