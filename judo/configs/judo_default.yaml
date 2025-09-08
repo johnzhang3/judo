@@ -1,5 +1,5 @@
 # task: cylinder_push
-task: spot_locomotion
+task: spot_base
 # task: spot_door_box
 # task: fr3_ball
 optimizer: cem

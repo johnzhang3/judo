@@ -39,15 +39,11 @@ class RolloutBackend:
         # processed_controls here represent the command per step
 
         # Pad 13-D commands -> 25-D policy command layout: [torso_vel(3), arm_cmd(7), leg_cmd(12)=0, torso_pos(3)]
-        assert controls.shape[-1] == 13, "Spot task expects 13-D commands"
-        B, T, _ = controls.shape
-        padded = np.zeros((B, T, 25), dtype=controls.dtype)
-        padded[..., 0:3] = controls[..., 0:3]       # torso_vel
-        padded[..., 3:10] = controls[..., 3:10]     # arm_cmd
-        # leg_cmd 10:22 left as zeros
-        padded[..., 22:25] = controls[..., 10:13]   # torso_pos
+        # print(controls.shape)
+        
+        controls = self.task_to_sim_ctrl(controls)
 
-        states, sensors = self.rollout_func(ms, ds, x0_batched, padded)
+        states, sensors = self.rollout_func(ms, ds, x0_batched, controls)
         return np.array(states), np.array(sensors)
 
 
@@ -60,12 +56,8 @@ class SimBackend:
     def sim(self, sim_model: MjModel, sim_data: MjData, sim_controls: np.ndarray) -> None:
         # processed_ctrl = self.task_to_sim_ctrl(sim_controls)
         x0 = np.concatenate([sim_data.qpos, sim_data.qvel])
-        # Single-step: pad 13->25 as above
-        assert sim_controls.shape[-1] == 13, "Spot task expects 13-D commands"
-        padded = np.zeros((25,), dtype=sim_controls.dtype)
-        padded[0:3] = sim_controls[0:3]
-        padded[3:10] = sim_controls[3:10]
-        padded[22:25] = sim_controls[10:13]
-        sim_spot(sim_model, sim_data, x0, padded)
+        controls = self.task_to_sim_ctrl(sim_controls)
+        controls = controls.flatten()
+        sim_spot(sim_model, sim_data, x0, controls)
 
 

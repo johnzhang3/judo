@@ -1,0 +1,190 @@
+from dataclasses import dataclass
+from typing import Any
+
+import mujoco
+import numpy as np
+from mujoco import MjData, MjModel
+from judo.tasks.spot.spot_constants import (
+    ARM_CMD_INDS,
+    ARM_SOFT_LOWER_JOINT_LIMITS,
+    ARM_SOFT_UPPER_JOINT_LIMITS,
+    ARM_STOWED_POS,
+    ARM_UNSTOWED_POS,
+    BASE_SOFT_LIMITS,
+    BASE_VEL_CMD_INDS,
+    DEFAULT_SPOT_ROLLOUT_CUTOFF_TIME,
+    FRONT_LEG_CMD_INDS,
+    GRIPPER_CLOSED_POS,
+    GRIPPER_OPEN_POS,
+    JOINT_NAMES_BOSDYN,
+    LEG_SOFT_LOWER_JOINT_LIMITS,
+    LEG_SOFT_UPPER_JOINT_LIMITS,
+    LEGS_STANDING_POS,
+    STANDING_HEIGHT_CMD,
+)
+
+from judo import MODEL_PATH
+from judo.tasks.base import Task, TaskConfig
+from judo.utils.mujoco_spot import RolloutBackend, SimBackend
+XML_PATH = str(MODEL_PATH / "xml/spot_locomotion.xml")
+
+
+
+
+@dataclass
+class SpotBaseConfig(TaskConfig):
+    """Base config for Spot-style tasks."""
+
+    fall_penalty: float = 2500.0
+    spot_fallen_threshold: float = 0.35
+
+
+class SpotBase(Task[SpotBaseConfig]):
+    """Flexible base task for Spot locomotion/skills.
+
+    Controls are a compact vector mapped to the 25-dim policy command:
+    - Base only:            [base_vel(3)]
+    - Base + Arm:           [base_vel(3), arm_cmd(7)]
+    - Base + Legs:          [base_vel(3), front_leg_cmd(6), leg_selection(1)]
+    - Base + Arm + Legs:    [base_vel(3), arm_cmd(7), front_leg_cmd(6), leg_selection(1)]
+
+    The mapping to the 25-dim policy command is done in task_to_sim_ctrl.
+    """
+
+    def __init__(self, model_path: str=XML_PATH, use_arm: bool = False, use_gripper: bool = False, use_legs: bool = False) -> None:
+        super().__init__(model_path)
+        self.use_arm = use_arm
+        self.use_gripper = use_gripper  # Reserved flag; not used in current mapping
+        self.use_legs = use_legs
+
+        # Use ONNX-based rollout backend
+        self.RolloutBackend = RolloutBackend
+        self.SimBackend = SimBackend
+
+        # Default torso position command (indices 22:25) left as zeros by default
+        self.default_policy_command = np.zeros((25,), dtype=float)
+
+    @property
+    def nu(self) -> int:
+        base = 3
+        arm = 7 if self.use_arm else 0
+        legs = (6 + 1) if self.use_legs else 0  # six front-leg joints + selection
+        return base + arm + legs
+
+    @property
+    def ctrlrange(self) -> np.ndarray:
+        """Control bounds for the task."""
+        BASE_LOWER = -BASE_SOFT_LIMITS
+        BASE_UPPER = BASE_SOFT_LIMITS
+        GRIPPER_LOWER = GRIPPER_OPEN_POS if self.use_gripper else GRIPPER_CLOSED_POS
+        GRIPPER_UPPER = GRIPPER_CLOSED_POS
+        ARM_LOWER = np.concatenate((ARM_SOFT_LOWER_JOINT_LIMITS[:-1], [GRIPPER_LOWER]))
+        ARM_UPPER = np.concatenate((ARM_SOFT_UPPER_JOINT_LIMITS[:-1], [GRIPPER_UPPER]))
+        LEGS_LOWER = LEG_SOFT_LOWER_JOINT_LIMITS[0:6]
+        LEGS_UPPER = LEG_SOFT_UPPER_JOINT_LIMITS[0:6]
+        SELECTION_LOWER = -np.ones(1)
+        SELECTION_UPPER = np.ones(1)
+
+        if not self.use_arm and not self.use_legs:  # Base
+            lower_bound = BASE_LOWER
+            upper_bound = BASE_UPPER
+        elif self.use_arm and not self.use_legs:  # Base and arm
+            lower_bound = np.concatenate((BASE_LOWER, ARM_LOWER))
+            upper_bound = np.concatenate((BASE_UPPER, ARM_UPPER))
+        elif not self.use_arm and self.use_legs:  # Base and legs
+            lower_bound = np.concatenate((BASE_LOWER, LEGS_LOWER, SELECTION_LOWER))
+            upper_bound = np.concatenate((BASE_UPPER, LEGS_UPPER, SELECTION_UPPER))
+        elif self.use_arm and self.use_legs:  # Base, arm, and legs
+            lower_bound = np.concatenate((BASE_LOWER, ARM_LOWER, LEGS_LOWER, SELECTION_LOWER))
+            upper_bound = np.concatenate((BASE_UPPER, ARM_UPPER, LEGS_UPPER, SELECTION_UPPER))
+
+        return np.stack([lower_bound, upper_bound], axis=-1)
+
+    def task_to_sim_ctrl(self, controls: np.ndarray) -> np.ndarray:
+        """Map compact controls (..., nu) to 25-dim policy command expected by C++ rollout.
+
+        Layout of 25-dim policy command:
+        [0:3]  torso_vel_cmd
+        [3:10] arm_cmd
+        [10:22] leg_cmd (4 legs x 3) used for override
+        [22:25] torso_pos_cmd
+        """
+        controls = np.asarray(controls)
+        added_dim = False
+        if controls.ndim == 1:
+            controls = controls[None]
+            added_dim = True
+
+        B, T = controls.shape[0], controls.shape[1] if controls.ndim == 3 else 1
+        if controls.ndim == 2:
+            # assume (..., nu) at sim timestep grid
+            controls = controls[:, None, :]
+            T = 1
+
+        out = np.zeros((controls.shape[0], controls.shape[1], 25), dtype=controls.dtype)
+
+        base_end = 3
+        arm_end = base_end + (7 if self.use_arm else 0)
+        legs_end = arm_end + ((6 + 1) if self.use_legs else 0)
+
+        # Base velocity
+        out[..., 0:3] = controls[..., 0:base_end]
+
+        # Arm commands
+        if self.use_arm:
+            out[..., 3:10] = controls[..., base_end:arm_end]
+
+        # Leg override commands (front legs only) + selection
+        if self.use_legs:
+            leg_block = controls[..., arm_end:legs_end]  # shape (..., 7)
+            fl_cmd = leg_block[..., 0:3]
+            fr_cmd = leg_block[..., 3:6]
+            sel = leg_block[..., 6]
+            # selection: < -0.5 -> FL, > 0.5 -> FR, else neither
+            mask_fl = sel < -0.5
+            mask_fr = sel > 0.5
+
+            # place into policy command leg slots [10:22]
+            # groups: FL(10:13), FR(13:16), HL(16:19), HR(19:22)
+            out[..., 10:13] = np.where(mask_fl[..., None], fl_cmd, 0.0)
+            out[..., 13:16] = np.where(mask_fr[..., None], fr_cmd, 0.0)
+
+        if added_dim:
+            out = out.squeeze(axis=0)
+        if T == 1 and out.ndim == 3:
+            out = out[:, 0, :]
+        return out
+
+    def reward(
+        self,
+        states: np.ndarray,
+        sensors: np.ndarray,
+        controls: np.ndarray,
+        config: SpotBaseConfig,
+        system_metadata: dict[str, Any] | None = None,
+    ) -> np.ndarray:
+        """Simple standing reward used as a default for base class.
+
+        Penalizes falling and large control magnitudes.
+        """
+        # upright heuristic via torso height (qpos z)
+        # states = states[:, :-1, :]
+        # # print(states.shape)
+        # # print(controls.shape)
+        # base_z = states[..., 2]
+        # fallen = base_z < config.spot_fallen_threshold
+        # penalty = np.where(fallen, config.fall_penalty, 0.0)
+        # control_rew = -0.1 * (controls ** 2).sum(axis=-1)
+        # rewards = (control_rew - penalty).sum(axis=-1)
+        # print(rewards.shape)
+        rewards = np.zeros(states.shape[0])
+        return rewards
+
+    def reset(self) -> None:
+        self.data.qpos = np.zeros_like(self.data.qpos)
+        self.data.qpos[2] = 1.0
+        self.data.qpos[3] = 1.0
+        self.data.qvel = np.zeros_like(self.data.qvel)
+        mujoco.mj_forward(self.model, self.data)
+
+
