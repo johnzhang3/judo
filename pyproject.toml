@@ -193,6 +193,7 @@ pybind11-stubgen = "*"
 pyright = "*"
 pytest = "*"
 pytest-cov = "*"
+onnxruntime = "*"
 
 [tool.pixi.feature.docs.dependencies]
 furo = "*"
