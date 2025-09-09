@@ -1,4 +1,5 @@
 #include "rollout_spot.h"
+#include "rollout.h"
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <onnxruntime/core/session/onnxruntime_cxx_api.h>
@@ -30,67 +31,62 @@ static py::array_t<double> make_array_owned(std::vector<double>& buf, int B, int
     return py::array_t<double>(shape, strides, heap_buf->data(), free_when_done);
 }
 
-// Spot policy wrapper for ONNXRuntime (base policy: input=observation[1,84], output=policy_out[1,12])
-struct SpotPolicy {
-    Ort::Env env;
-    Ort::Session session;
+// Shared ONNX Session allocator (similar to OnnxInterface::allocateOrtSession)
+static std::shared_ptr<Ort::Session> allocate_shared_session(const std::string& onnx_path) {
+    static Ort::Env env;
     Ort::SessionOptions opts;
-    Ort::AllocatorWithDefaultOptions allocator;
+    opts.SetIntraOpNumThreads(1);
+    opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_BASIC);
+    return std::make_shared<Ort::Session>(env, onnx_path.c_str(), opts);
+}
 
-    // cache input/output names
-    std::vector<const char*> input_names;
-    std::vector<const char*> output_names;
-
-    SpotPolicy(const std::string& onnx_path)
-        : env(ORT_LOGGING_LEVEL_WARNING, "spot-policy"),
-          opts(),
-          session(nullptr)
-    {
-        opts.SetIntraOpNumThreads(1);
-        opts.SetInterOpNumThreads(1);
-        opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_BASIC);
-        session = Ort::Session(env, onnx_path.c_str(), opts);
-
-        size_t n_in = session.GetInputCount();
-        size_t n_out = session.GetOutputCount();
-        input_names.reserve(n_in);
-        output_names.reserve(n_out);
-        for (size_t i = 0; i < n_in; ++i) {
-            char* name = session.GetInputNameAllocated(i, allocator).release();
-            input_names.push_back(name);
-        }
-        for (size_t i = 0; i < n_out; ++i) {
-            char* name = session.GetOutputNameAllocated(i, allocator).release();
-            output_names.push_back(name);
-        }
+// Lightweight Policy wrapper following OnnxInterface structure
+class OnnxPolicy {
+public:
+    explicit OnnxPolicy(const std::shared_ptr<Ort::Session>& session)
+        : session_(session), memory_info_(Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU)) {
+        Ort::Allocator allocator(*session_, memory_info_);
+        input_name_  = session_->GetInputNameAllocated(0, allocator).get();
+        output_name_ = session_->GetOutputNameAllocated(0, allocator).get();
+        input_shape_  = session_->GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
+        output_shape_ = session_->GetOutputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
+        input_size_ = static_cast<int>(input_shape_[1]);
+        output_size_ = static_cast<int>(output_shape_[1]);
     }
 
-    ~SpotPolicy() {
-        // Free names allocated via allocator.release()
-        for (auto* p : input_names) allocator.Free(const_cast<char*>(p));
-        for (auto* p : output_names) allocator.Free(const_cast<char*>(p));
-    }
-
-    // Run base policy: input observation[84] -> output policy_out[12]
     std::vector<float> run(const std::vector<float>& observation) {
-        Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
-        std::array<int64_t, 2> shape = { 1, static_cast<int64_t>(observation.size()) };
-        Ort::Value t_obs = Ort::Value::CreateTensor<float>(mem_info, const_cast<float*>(observation.data()), observation.size(), shape.data(), 2);
-        std::array<Ort::Value, 1> inputs = { std::move(t_obs) };
-        const char* const* in_names = input_names.empty() ? nullptr : input_names.data();
-        auto outputs = session.Run(Ort::RunOptions{nullptr}, in_names, inputs.data(), inputs.size(), output_names.data(), output_names.size());
-        if (outputs.size() < 1) {
-            throw std::runtime_error("Expected at least 1 output from ONNX policy");
+        if ((int)observation.size() != input_size_) {
+            throw std::runtime_error("Observation size does not match ONNX input dimension");
         }
-        auto& policy_val = outputs[0];
-        float* policy_ptr = policy_val.GetTensorMutableData<float>();
-        auto policy_info = policy_val.GetTensorTypeAndShapeInfo();
-        size_t policy_elems = policy_info.GetElementCount();
-        return std::vector<float>(policy_ptr, policy_ptr + policy_elems);
+        std::array<int64_t, 2> ishape = { 1, static_cast<int64_t>(observation.size()) };
+        Ort::Value input_tensor = Ort::Value::CreateTensor<float>(
+            memory_info_, const_cast<float*>(observation.data()), observation.size(), ishape.data(), 2);
+        const char* in_names[1] = { input_name_.c_str() };
+        const char* out_names[1] = { output_name_.c_str() };
+        auto outputs = session_->Run(run_options_, in_names, &input_tensor, 1, out_names, 1);
+        auto& out = outputs[0];
+        float* ptr = out.GetTensorMutableData<float>();
+        auto info = out.GetTensorTypeAndShapeInfo();
+        size_t n = info.GetElementCount();
+        return std::vector<float>(ptr, ptr + n);
     }
+
+    int input_size() const { return input_size_; }
+    int output_size() const { return output_size_; }
+
+private:
+    std::shared_ptr<Ort::Session> session_;
+    Ort::MemoryInfo memory_info_;
+    Ort::RunOptions run_options_;
+    std::string input_name_;
+    std::string output_name_;
+    std::vector<int64_t> input_shape_;
+    std::vector<int64_t> output_shape_;
+    int input_size_ = 0;
+    int output_size_ = 0;
 };
 
-// Run ONNX policy path; for now fixed relative path as in Python example
+// Run ONNX policy path; fixed relative path
 static std::string get_policy_path() {
     return std::string("judo_cpp/policy/xinghao_policy_v1.onnx");
 }
@@ -118,29 +114,19 @@ static inline void build_observation(const mjModel* m, mjData* d, const double* 
                                      std::vector<float>& obs_out) {
     obs_out.resize(84);
     int off = 0;
-    // inv quaternion
     double invq[4];
     mju_negQuat(invq, d->qpos + base_qpos_start + 3);
-    // base lin vel (world->base)
     double blin[3];
     mju_rotVecQuat(blin, d->qvel + base_qvel_start, invq);
     for (int i=0;i<3;i++) obs_out[off++] = static_cast<float>(blin[i]);
-    // base ang vel
     for (int i=0;i<3;i++) obs_out[off++] = static_cast<float>(d->qvel[base_qvel_start + 3 + i]);
-    // projected gravity
     double gvec[3] = {0.0, 0.0, -1.0};
     mju_rotVecQuat(gvec, gvec, invq);
     for (int i=0;i<3;i++) obs_out[off++] = static_cast<float>(gvec[i]);
-    // command parts
-    // torso vel 0:3
     for (int i=0;i<3;i++) obs_out[off++] = static_cast<float>(command_ptr[0 + i]);
-    // arm 3:10
     for (int i=0;i<7;i++) obs_out[off++] = static_cast<float>(command_ptr[3 + i]);
-    // leg cmd 10:22
     for (int i=0;i<12;i++) obs_out[off++] = static_cast<float>(command_ptr[10 + i]);
-    // torso pos 22:25
     for (int i=0;i<3;i++) obs_out[off++] = static_cast<float>(command_ptr[22 + i]);
-    // joint pos 19 with offset and permutation
     double jpos_raw[19];
     double jvel_raw[19];
     for (int i=0;i<19;i++) {
@@ -156,21 +142,17 @@ static inline void build_observation(const mjModel* m, mjData* d, const double* 
     }
     for (int i=0;i<19;i++) obs_out[off++] = static_cast<float>(jpos_orbit[i]);
     for (int i=0;i<19;i++) obs_out[off++] = static_cast<float>(jvel_orbit[i]);
-    // prev policy 12
     for (int i=0;i<12;i++) obs_out[off++] = (i < (int)prev_policy.size() ? prev_policy[i] : 0.0f);
 }
 
 static inline void compute_control_from_policy(const float* policy_out, const double* command_ptr, std::vector<double>& ctrl_out) {
     ctrl_out.resize(19);
-    // legs 12 from policy out [orbit order] -> reorder to MuJoCo legs
     double legs_orbit[12];
     for (int i=0;i<12;i++) legs_orbit[i] = 0.2 * static_cast<double>(policy_out[i]);
     double legs_mj[12];
     for (int i=0;i<12;i++) legs_mj[i] = legs_orbit[ORBIT_TO_MJ_LEGS[i]] + DEFAULT_JOINT_POS[i];
     for (int i=0;i<12;i++) ctrl_out[i] = legs_mj[i];
-    // arm from command 3:10
     for (int i=0;i<7;i++) ctrl_out[12 + i] = static_cast<double>(command_ptr[3 + i]);
-    // leg override from command[10:22] in 4 groups (FL, FR, HL, HR)
     const double* leg_cmd = command_ptr + 10;
     auto norm3 = [](const double* v){ return std::abs(v[0]) + std::abs(v[1]) + std::abs(v[2]); };
     if (norm3(leg_cmd + 0) > 0.0)      { for (int i=0;i<3;i++) ctrl_out[0 + i] = leg_cmd[0 + i]; }
@@ -203,12 +185,12 @@ py::tuple RolloutSpot(
         throw std::runtime_error("x0 must be a 2D array of shape (B, nq+nv)");
     }
 
-    // allocate outputs
     std::vector<double> states_buf(B * (horizon + 1) * nstate);
     std::vector<double> sens_buf(B * horizon * nsens);
 
-    // policy
-    SpotPolicy policy(get_policy_path());
+    // Shared ONNX Session and policy wrapper (thread-safe Run)
+    auto session = allocate_shared_session(get_policy_path());
+    OnnxPolicy policy(session);
 
     auto controls_unchecked = controls.unchecked<3>();
     const double* x0_ptr = x0.data();
@@ -216,62 +198,59 @@ py::tuple RolloutSpot(
     // For each batch element, maintain prev_policy (size 12) as float32
     std::vector<std::vector<float>> prev_policy(B, std::vector<float>(12, 0.0f));
 
-    for (int i = 0; i < B; i++) {
-        mjData* d = data[i];
-        const mjModel* m = models[i];
+    // Parallelize per-environment using persistent thread pool
+    int num_threads = std::min<int>(B, std::max(1, (int)std::thread::hardware_concurrency()));
+    PersistentThreadPool* pool = ThreadPoolManager::instance().get_pool(num_threads);
 
-        // set initial qpos+qvel
-        d->time = 0.0;
-        const double* x0_i = x0_ptr + i * nstate;
-        mj_setState(m, d, x0_i, mjSTATE_QPOS | mjSTATE_QVEL);
-        mj_forward(m, d);
-        mju_zero(d->qacc_warmstart, m->nv);
+    {
+        py::gil_scoped_release release;
+        pool->execute_parallel([&](int i){
+            mjData* d = data[i];
+            const mjModel* m = models[i];
 
-        double* st_ptr = &states_buf[i * (horizon + 1) * nstate];
-        double* se_ptr = &sens_buf[i * horizon * nsens];
+            d->time = 0.0;
+            const double* x0_i = x0_ptr + i * nstate;
+            mj_setState(m, d, x0_i, mjSTATE_QPOS | mjSTATE_QVEL);
+            mj_forward(m, d);
+            mju_zero(d->qacc_warmstart, m->nv);
 
-        // store initial state
-        for (int j = 0; j < nq; j++) st_ptr[j] = d->qpos[j];
-        for (int j = 0; j < nv; j++) st_ptr[nq + j] = d->qvel[j];
+            double* st_ptr = &states_buf[i * (horizon + 1) * nstate];
+            double* se_ptr = &sens_buf[i * horizon * nsens];
 
-        std::vector<double> current_state(nstate);
-        for (int j = 0; j < nq; j++) current_state[j] = d->qpos[j];
-        for (int j = 0; j < nv; j++) current_state[nq + j] = d->qvel[j];
-
-        // indices for this model
-        int base_qpos_start, base_qvel_start, leg_qpos_start, leg_qvel_start;
-        compute_indices(m, base_qpos_start, base_qvel_start, leg_qpos_start, leg_qvel_start);
-
-        for (int t = 0; t < horizon; t++) {
-            // Build policy inputs
-            std::vector<float> obs;
-            double cmd_buf[25];
-            for (int j=0;j<25;j++) cmd_buf[j] = static_cast<double>(controls_unchecked(i, t, j));
-            build_observation(m, d, cmd_buf, prev_policy[i], base_qpos_start, base_qvel_start, leg_qpos_start, leg_qvel_start, obs);
-
-            // Run policy to get 12-dim output
-            auto policy_out_vec = policy.run(obs);
-
-            // Map to 19-dim control and apply to MuJoCo
-            std::vector<double> ctrl;
-            compute_control_from_policy(policy_out_vec.data(), cmd_buf, ctrl);
-            if ((int)ctrl.size() != nu) {
-                throw std::runtime_error("Computed control size does not match model nu");
-            }
-            for (int j = 0; j < nu; j++) d->ctrl[j] = ctrl[j];
-
-            // Step simulation
-            mj_step(m, d);
-
-            // Update prev_policy for next step
-            prev_policy[i] = std::move(policy_out_vec);
-
-            // Record new state and sensors
+            for (int j = 0; j < nq; j++) st_ptr[j] = d->qpos[j];
+            for (int j = 0; j < nv; j++) st_ptr[nq + j] = d->qvel[j];
+            std::vector<double> current_state(nstate);
             for (int j = 0; j < nq; j++) current_state[j] = d->qpos[j];
             for (int j = 0; j < nv; j++) current_state[nq + j] = d->qvel[j];
-            for (int j = 0; j < nstate; j++) st_ptr[(t + 1) * nstate + j] = current_state[j];
-            for (int j = 0; j < nsens; j++) se_ptr[t * nsens + j] = d->sensordata[j];
-        }
+
+            int base_qpos_start, base_qvel_start, leg_qpos_start, leg_qvel_start;
+            compute_indices(m, base_qpos_start, base_qvel_start, leg_qpos_start, leg_qvel_start);
+
+            for (int t = 0; t < horizon; t++) {
+                std::vector<float> obs;
+                double cmd_buf[25];
+                for (int j=0;j<25;j++) cmd_buf[j] = static_cast<double>(controls_unchecked(i, t, j));
+                build_observation(m, d, cmd_buf, prev_policy[i], base_qpos_start, base_qvel_start, leg_qpos_start, leg_qvel_start, obs);
+
+                auto policy_out_vec = policy.run(obs);
+
+                std::vector<double> ctrl;
+                compute_control_from_policy(policy_out_vec.data(), cmd_buf, ctrl);
+                if ((int)ctrl.size() != nu) {
+                    throw std::runtime_error("Computed control size does not match model nu");
+                }
+                for (int j = 0; j < nu; j++) d->ctrl[j] = ctrl[j];
+
+                mj_step(m, d);
+
+                prev_policy[i] = std::move(policy_out_vec);
+
+                for (int j = 0; j < nq; j++) current_state[j] = d->qpos[j];
+                for (int j = 0; j < nv; j++) current_state[nq + j] = d->qvel[j];
+                for (int j = 0; j < nstate; j++) st_ptr[(t + 1) * nstate + j] = current_state[j];
+                for (int j = 0; j < nsens; j++) se_ptr[t * nsens + j] = d->sensordata[j];
+            }
+        }, B);
     }
 
     auto states_arr = make_array_owned(states_buf, B, horizon + 1, nstate);
@@ -296,25 +275,21 @@ void SimSpot(
         throw std::runtime_error("controls must be a 1D array of command");
     }
 
-    // set initial qpos+qvel
     data->time = 0.0;
     const double* x0_ptr = x0.data();
     mj_setState(model, data, x0_ptr, mjSTATE_QPOS | mjSTATE_QVEL);
     mj_forward(model, data);
     mju_zero(data->qacc_warmstart, nv);
 
-    // Build indices
     int base_qpos_start, base_qvel_start, leg_qpos_start, leg_qvel_start;
     compute_indices(model, base_qpos_start, base_qvel_start, leg_qpos_start, leg_qvel_start);
 
-    // Build one-step command buffer
     int cmd_dim = (int)controls.shape(0);
     auto ctrl_unchecked = controls.unchecked<1>();
     double cmd_buf[25];
     for (int j = 0; j < cmd_dim && j < 25; j++) cmd_buf[j] = static_cast<double>(ctrl_unchecked(j));
     for (int j = cmd_dim; j < 25; j++) cmd_buf[j] = 0.0;
 
-    // Fetch previous policy output for this simulator instance
     std::vector<float> prev;
     {
         std::lock_guard<std::mutex> lock(g_prev_policy_mu);
@@ -325,11 +300,12 @@ void SimSpot(
             prev.assign(12, 0.0f);
         }
     }
-    // Build observation
+
     std::vector<float> obs;
     build_observation(model, data, cmd_buf, prev, base_qpos_start, base_qvel_start, leg_qpos_start, leg_qvel_start, obs);
 
-    SpotPolicy policy(get_policy_path());
+    auto session = allocate_shared_session(get_policy_path());
+    OnnxPolicy policy(session);
     auto policy_out_vec = policy.run(obs);
     std::vector<double> ctrl;
     compute_control_from_policy(policy_out_vec.data(), cmd_buf, ctrl);
@@ -339,11 +315,8 @@ void SimSpot(
     for (int j = 0; j < nu; j++) data->ctrl[j] = ctrl[j];
     mj_step(model, data);
 
-    // Store policy_out for next call
     {
         std::lock_guard<std::mutex> lock(g_prev_policy_mu);
-        g_prev_policy_map[data] = policy_out_vec;  // copy
+        g_prev_policy_map[data] = policy_out_vec;
     }
 }
-
-

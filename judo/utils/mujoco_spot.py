@@ -16,6 +16,7 @@ class RolloutBackend:
         else:
             raise ValueError(f"Unknown backend: {self.backend}")
         self.task_to_sim_ctrl = task_to_sim_ctrl
+        self.previous_policy_output = np.zeros((1, 12))
 
     def rollout(
         self,
@@ -35,14 +36,9 @@ class RolloutBackend:
         # processed_controls = self.task_to_sim_ctrl(controls)
         assert x0_batched.shape[-1] == nq + nv
         assert x0_batched.ndim == 2
-        # assert processed_controls.ndim == 3
-        # processed_controls here represent the command per step
+        assert controls.ndim == 3
 
-        # Pad 13-D commands -> 25-D policy command layout: [torso_vel(3), arm_cmd(7), leg_cmd(12)=0, torso_pos(3)]
-        # print(controls.shape)
-        
         controls = self.task_to_sim_ctrl(controls)
-
         states, sensors = self.rollout_func(ms, ds, x0_batched, controls)
         return np.array(states), np.array(sensors)
 

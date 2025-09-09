@@ -21,6 +21,7 @@ from judo.tasks.spot.spot_constants import (
     LEG_SOFT_UPPER_JOINT_LIMITS,
     LEGS_STANDING_POS,
     STANDING_HEIGHT_CMD,
+    STANDING_HEIGHT
 )
 
 from judo import MODEL_PATH
@@ -56,20 +57,21 @@ class SpotBase(Task[SpotBaseConfig]):
         self.use_arm = use_arm
         self.use_gripper = use_gripper  # Reserved flag; not used in current mapping
         self.use_legs = use_legs
+        self.set_command_values()
 
         # Use ONNX-based rollout backend
         self.RolloutBackend = RolloutBackend
         self.SimBackend = SimBackend
 
         # Default torso position command (indices 22:25) left as zeros by default
-        self.default_policy_command = np.zeros((25,), dtype=float)
+        self.default_policy_command = np.array(
+            [0, 0, 0] + list(ARM_STOWED_POS) + [0] * 12 + [0, 0, STANDING_HEIGHT_CMD]
+        )
 
     @property
     def nu(self) -> int:
-        base = 3
-        arm = 7 if self.use_arm else 0
-        legs = (6 + 1) if self.use_legs else 0  # six front-leg joints + selection
-        return base + arm + legs
+        """Number of controls for this task."""
+        return len(self.default_command)
 
     @property
     def ctrlrange(self) -> np.ndarray:
@@ -100,6 +102,56 @@ class SpotBase(Task[SpotBaseConfig]):
 
         return np.stack([lower_bound, upper_bound], axis=-1)
 
+    def set_command_values(self) -> None:
+        """Update default_command and command_mask."""
+        if not self.use_arm and not self.use_legs:  # Base
+            # Base velocity
+            self.default_command = np.array([0, 0, 0])
+            self.command_mask = np.array(BASE_VEL_CMD_INDS)
+        elif self.use_arm and not self.use_legs:  # Base and arm
+            # Base velocity, arm joint angles
+            self.default_command = np.array([0, 0, 0, *ARM_UNSTOWED_POS])
+            self.command_mask = np.array(BASE_VEL_CMD_INDS + ARM_CMD_INDS)
+        elif not self.use_arm and self.use_legs:  # Base and legs
+            # Base velocity, leg joint angles
+            self.default_command = np.array([0, 0, 0, *LEGS_STANDING_POS[0:6], 0])
+            self.command_mask = np.array(BASE_VEL_CMD_INDS + FRONT_LEG_CMD_INDS)
+        elif self.use_arm and self.use_legs:  # Base, arm, and legs
+            # Base velocity, arm joint angles, leg joint angles, leg selection
+            self.default_command = np.array([0, 0, 0, *ARM_UNSTOWED_POS, *LEGS_STANDING_POS[0:6], 0])
+            self.command_mask = np.array(BASE_VEL_CMD_INDS + ARM_CMD_INDS + FRONT_LEG_CMD_INDS)
+
+    def apply_leg_mask(self, controls: np.ndarray) -> np.ndarray:
+        """Activate or deactivate leg commands depending on the leg selection.
+
+        leg selection:
+        -1.0 to -0.5: manipulation with left leg
+        -0.5 to +0.5: no leg manipulation
+        +0.5 to +1.0: manipulation with right leg
+        """
+        if self.use_legs:
+            added_dim = False
+            if controls.ndim == 1:  # Expand 1D control vector
+                controls = np.expand_dims(controls, axis=0)
+                added_dim = True
+
+            selection = controls[..., -1]
+            mask_fl = selection < -0.5
+            mask_fr = selection > 0.5
+            mask_neither = ~(mask_fl | mask_fr)
+
+            controls = controls.copy()
+            controls = controls[..., :-1]
+            # Last 6 entries are leg commands
+            controls[mask_fl, -3:] = 0.0
+            controls[mask_fr, -6:-3] = 0.0
+            controls[mask_neither, -6:] = 0.0
+
+            if added_dim:  # Squeeze 1D cotrol vector
+                controls = controls.squeeze(axis=0)
+
+        return controls
+
     def task_to_sim_ctrl(self, controls: np.ndarray) -> np.ndarray:
         """Map compact controls (..., nu) to 25-dim policy command expected by C++ rollout.
 
@@ -129,6 +181,7 @@ class SpotBase(Task[SpotBaseConfig]):
 
         # Base velocity
         out[..., 0:3] = controls[..., 0:base_end]
+        out[..., 24] = STANDING_HEIGHT
 
         # Arm commands
         if self.use_arm:
@@ -153,6 +206,7 @@ class SpotBase(Task[SpotBaseConfig]):
             out = out.squeeze(axis=0)
         if T == 1 and out.ndim == 3:
             out = out[:, 0, :]
+        # out[..., :] = self.default_policy_command
         return out
 
     def reward(
@@ -180,10 +234,30 @@ class SpotBase(Task[SpotBaseConfig]):
         rewards = np.zeros(states.shape[0])
         return rewards
 
+    @property
+    def reset_arm_pos(self) -> np.ndarray:
+        """Reset position of the arm"""
+        return ARM_UNSTOWED_POS if self.use_arm else ARM_STOWED_POS
+
+    @property
+    def reset_pose(self) -> np.ndarray:
+        """Reset pose of robot and object."""
+
+        return np.array(
+            [
+                *np.random.randn(2),
+                STANDING_HEIGHT,
+                1,
+                0,
+                0,
+                0,
+                *LEGS_STANDING_POS,
+                *self.reset_arm_pos,
+            ]
+        )
+
     def reset(self) -> None:
-        self.data.qpos = np.zeros_like(self.data.qpos)
-        self.data.qpos[2] = 1.0
-        self.data.qpos[3] = 1.0
+        self.data.qpos = self.reset_pose
         self.data.qvel = np.zeros_like(self.data.qvel)
         mujoco.mj_forward(self.model, self.data)
 
