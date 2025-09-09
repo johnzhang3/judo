@@ -8,20 +8,20 @@ from judo.tasks.spot.spot_constants import (
     STANDING_HEIGHT,
     LEGS_STANDING_POS,
 )
-import mujoco.viewer as viewer
+from judo.tasks.spot.spot_constants import (
+    STANDING_POS_RL,
+    isaac_to_mujoco,
+    mujoco_to_isaac,
+)
+import time
+import os
+
+import mediapy as media
+
 onnx_path = "judo_cpp/policy/xinghao_policy_v1.onnx"
 
-# Mappings and defaults (mirror C++)
-ORBIT_TO_MJ_LEGS = np.array([0, 3, 6, 9, 1, 4, 7, 10, 2, 5, 8, 11], dtype=np.int32)
-MJ_TO_ORBIT_19   = np.array([1, 6, 11, 2, 7, 12, 3, 8, 13, 4, 9, 14, 0, 5, 10, 15, 16, 17, 18], dtype=np.int32)
-DEFAULT_JOINT_POS = np.array([
-    0.12, 0.5, -1.0,
-    -0.12, 0.5, -1.0,
-    0.12, 0.5, -1.0,
-    -0.12, 0.5, -1.0,
-    0.0, -0.9, 1.8,
-    0.0, -0.9, 0.0, -1.54
-], dtype=np.float64)
+# Action scale parameter
+ACTION_SCALE = 0.2
 
 # Lazy global ONNX session
 _onnx_sess = None
@@ -85,8 +85,9 @@ def cmd_to_sim_ctrl(model: mujoco.MjModel,
     off += 3
 
     gvec = np.array([0.0, 0.0, -1.0], dtype=np.float64)
-    mujoco.mju_rotVecQuat(gvec, gvec.copy(), invq)
-    obs[off:off + 3] = gvec; off += 3
+    gvec_rotated = np.zeros(3, dtype=np.float64)
+    mujoco.mju_rotVecQuat(gvec_rotated, gvec, invq)
+    obs[off:off + 3] = gvec_rotated; off += 3
 
     # Command segments
     obs[off:off + 3] = cmd[0:3]; off += 3
@@ -94,13 +95,13 @@ def cmd_to_sim_ctrl(model: mujoco.MjModel,
     obs[off:off + 12] = cmd[10:22]; off += 12
     obs[off:off + 3] = cmd[22:25]; off += 3
 
-    # Joint pos/vel in orbit order with default offset
-    jpos_raw = data.qpos[leg_qpos_start: leg_qpos_start + 19] - DEFAULT_JOINT_POS
+    # Joint pos/vel with proper coordinate transformation
+    jpos_raw = data.qpos[leg_qpos_start: leg_qpos_start + 19] - STANDING_POS_RL
     jvel_raw = data.qvel[leg_qvel_start: leg_qvel_start + 19]
-    jpos_orbit = jpos_raw[MJ_TO_ORBIT_19]
-    jvel_orbit = jvel_raw[MJ_TO_ORBIT_19]
-    obs[off:off + 19] = jpos_orbit; off += 19
-    obs[off:off + 19] = jvel_orbit; off += 19
+    jpos_isaac = mujoco_to_isaac(jpos_raw)
+    jvel_isaac = mujoco_to_isaac(jvel_raw)
+    obs[off:off + 19] = jpos_isaac; off += 19
+    obs[off:off + 19] = jvel_isaac; off += 19
 
     # Previous policy output (12)
     if prev_policy_output is None or prev_policy_output.size != 12:
@@ -113,9 +114,8 @@ def cmd_to_sim_ctrl(model: mujoco.MjModel,
 
     # Map to control (19)
     ctrl = np.zeros(19, dtype=np.float64)
-    legs_orbit = 0.2 * policy_out[:12].astype(np.float64)
-    legs_mj = legs_orbit[ORBIT_TO_MJ_LEGS] + DEFAULT_JOINT_POS[:12]
-    ctrl[:12] = legs_mj
+    target_leg = isaac_to_mujoco(policy_out[:12]) * ACTION_SCALE + STANDING_POS_RL[:12]
+    ctrl[:12] = target_leg
 
     # Arm from command
     ctrl[12:19] = cmd[3:10]
@@ -123,15 +123,14 @@ def cmd_to_sim_ctrl(model: mujoco.MjModel,
     # Leg override
     leg_cmd = cmd[10:22]
 
-    def _norm3(v):
-        return np.abs(v[0]) + np.abs(v[1]) + np.abs(v[2])
-    if _norm3(leg_cmd[0:3]) > 0.0:
+    # Leg override using element-wise non-zero check (matches reference)
+    if np.any(leg_cmd[0:3] != 0):  # FL
         ctrl[0:3] = leg_cmd[0:3]
-    elif _norm3(leg_cmd[3:6]) > 0.0:
+    elif np.any(leg_cmd[3:6] != 0):  # FR
         ctrl[3:6] = leg_cmd[3:6]
-    elif _norm3(leg_cmd[6:9]) > 0.0:
+    elif np.any(leg_cmd[6:9] != 0):  # HL
         ctrl[6:9] = leg_cmd[6:9]
-    elif _norm3(leg_cmd[9:12]) > 0.0:
+    elif np.any(leg_cmd[9:12] != 0):  # HR
         ctrl[9:12] = leg_cmd[9:12]
 
     return ctrl, policy_out
@@ -147,7 +146,7 @@ def main() -> None:
     )
     default_pose = np.array(
             [
-                *np.random.randn(2),
+                0, 0,
                 STANDING_HEIGHT,
                 1,
                 0,
@@ -162,36 +161,53 @@ def main() -> None:
     mujoco.mj_forward(model, data)
     prev_po = np.zeros(12, dtype=np.float32)
 
-    # Optional viewer
-    use_viewer = False
+    # Headless render to video via mujoco.Renderer (+ fallback to imageio if mediapy unavailable)
+    duration_seconds = 10.0
+    target_fps = 30
+    steps_per_frame = max(1, int(round(1.0 / (model.opt.timestep * target_fps))))
+    total_frames = int(duration_seconds * target_fps)
 
-    T = 500
-    if use_viewer:
-        try:
-            with viewer.launch_passive(model, data) as v:
-                for _ in range(T):
-                    ctrl, prev_po = cmd_to_sim_ctrl(model, data, prev_po, default_policy_command)
-                    data.ctrl[:] = ctrl
-                    mujoco.mj_step(model, data)
-                    v.sync()
-        except RuntimeError as e:
-            # macOS requires running under mjpython for interactive viewer
-            print(f"Viewer unavailable ({e}). Falling back to headless simulation.\n"
-                  f"Tip: on macOS, run with 'mjpython dev/debug_spot_policy_sim.py' to enable the viewer.")
-            for _ in range(T):
-                ctrl, prev_po = cmd_to_sim_ctrl(model, data, prev_po, default_policy_command)
-                data.ctrl[:] = ctrl
-                
-                print(data.qpos[2])
-                mujoco.mj_step(model, data)
-    else:
-        for _ in range(T):
+    # Use model's configured offscreen framebuffer size to avoid allocation errors
+    try:
+        vis_global = model.vis.global_
+    except AttributeError:
+        vis_global = getattr(model.vis, 'global', None)
+    offw = int(getattr(vis_global, 'offwidth', 0) or 0) if vis_global is not None else 0
+    offh = int(getattr(vis_global, 'offheight', 0) or 0) if vis_global is not None else 0
+    fb_w = offw if offw > 0 else 640
+    fb_h = offh if offh > 0 else 480
+    # Note: mujoco.Renderer expects (height, width)
+    renderer = mujoco.Renderer(model, fb_h, fb_w)
+    frames = []
+
+    for _ in range(total_frames):
+        # Run several sim steps per frame to hit target_fps
+        for _ in range(steps_per_frame):
             ctrl, prev_po = cmd_to_sim_ctrl(model, data, prev_po, default_policy_command)
-            print('policy control: ', ctrl)
-            # override with standing joint pos for debugging
-            ctrl = np.concatenate([LEGS_STANDING_POS, ARM_STOWED_POS])
+            # Use the policy output instead of hardcoded positions
             data.ctrl[:] = ctrl
             mujoco.mj_step(model, data)
+
+        renderer.update_scene(data)
+        rgb = renderer.render()
+        frames.append(rgb)
+
+
+    renderer.close()
+
+    os.makedirs("outputs", exist_ok=True)
+    out_path = os.path.join("outputs", "spot_policy_debug.mp4")
+    if media is not None:
+        media.write_video(out_path, frames, fps=target_fps)
+        print(f"Saved video to {out_path} ({len(frames)} frames @ {target_fps} fps)")
+    else:
+        try:
+            import imageio.v2 as imageio
+            imageio.mimsave(out_path, frames, fps=target_fps)
+            print(f"Saved video to {out_path} via imageio ({len(frames)} frames @ {target_fps} fps)")
+        except Exception as e:
+            print("Unable to save video: install mediapy or imageio.")
+            raise e
             
 
 

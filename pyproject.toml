@@ -178,6 +178,8 @@ judo-rai = { path = ".", editable = true }
 [tool.pixi.dependencies]
 python = ">=3.10"
 onnx2torch = ">=1.5.15,<2"
+mediapy = ">=1.2.4,<2"
+ffmpeg = ">=8.0.0,<9"
 
 [tool.pixi.environments]
 default = { solve-group = "default" }
