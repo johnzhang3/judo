@@ -163,9 +163,9 @@ def main() -> None:
     prev_po = np.zeros(12, dtype=np.float32)
 
     # Optional viewer
-    use_viewer = True
+    use_viewer = False
 
-    T = 50
+    T = 500
     if use_viewer:
         try:
             with viewer.launch_passive(model, data) as v:
@@ -181,12 +181,15 @@ def main() -> None:
             for _ in range(T):
                 ctrl, prev_po = cmd_to_sim_ctrl(model, data, prev_po, default_policy_command)
                 data.ctrl[:] = ctrl
-                print(prev_po)
+                
                 print(data.qpos[2])
                 mujoco.mj_step(model, data)
     else:
         for _ in range(T):
             ctrl, prev_po = cmd_to_sim_ctrl(model, data, prev_po, default_policy_command)
+            print('policy control: ', ctrl)
+            # override with standing joint pos for debugging
+            ctrl = np.concatenate([LEGS_STANDING_POS, ARM_STOWED_POS])
             data.ctrl[:] = ctrl
             mujoco.mj_step(model, data)
             
