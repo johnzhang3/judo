@@ -63,7 +63,6 @@ class SpotBase(Task[SpotBaseConfig]):
         self.RolloutBackend = RolloutBackend
         self.SimBackend = SimBackend
 
-        # Default torso position command (indices 22:25) left as zeros by default
         self.default_policy_command = np.array(
             [0, 0, 0] + list(ARM_STOWED_POS) + [0] * 12 + [0, 0, STANDING_HEIGHT_CMD]
         )
