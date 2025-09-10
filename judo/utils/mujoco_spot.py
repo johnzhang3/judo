@@ -31,7 +31,7 @@ class RolloutBackend:
         nq = ms[0].nq
         nv = ms[0].nv
         nu = ms[0].nu
-
+        
         x0_batched = np.tile(x0, (len(ms), 1))
         # processed_controls = self.task_to_sim_ctrl(controls)
         assert x0_batched.shape[-1] == nq + nv

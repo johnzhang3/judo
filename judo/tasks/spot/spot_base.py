@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, TypeVar
 
 import mujoco
 import numpy as np
@@ -30,14 +30,27 @@ from judo.utils.mujoco_spot import RolloutBackend, SimBackend
 XML_PATH = str(MODEL_PATH / "xml/spot_locomotion.xml")
 
 
+@dataclass
+class GOAL_POSITIONS:
+    """Goal positions of Spot."""
+
+    origin: np.ndarray = field(default_factory=lambda: np.array([0, 0, 0.0]))
+    origin_decimal: np.ndarray = field(default_factory=lambda: np.array([0, 0.0, 0.01]))
+    blue_cross: np.ndarray = field(default_factory=lambda: np.array([2.77, 0.71, 0.3]))
+    black_cross: np.ndarray = field(default_factory=lambda: np.array([1.5, -1.5, 0.275]))
 
 
 @dataclass
 class SpotBaseConfig(TaskConfig):
-    """Base config for Spot-style tasks."""
+    """Base config for spot tasks."""
 
     fall_penalty: float = 2500.0
-    spot_fallen_threshold: float = 0.35
+    spot_fallen_threshold = 0.35  # Torso height where Spot is considered "fallen"
+    w_goal: float = 60.0
+    w_controls: float = 0.0
+
+
+ConfigT = TypeVar("ConfigT", bound=SpotBaseConfig)
 
 
 class SpotBase(Task[SpotBaseConfig]):
@@ -52,7 +65,7 @@ class SpotBase(Task[SpotBaseConfig]):
     The mapping to the 25-dim policy command is done in task_to_sim_ctrl.
     """
 
-    def __init__(self, model_path: str=XML_PATH, use_arm: bool = False, use_gripper: bool = False, use_legs: bool = False) -> None:
+    def __init__(self, model_path: str=XML_PATH, use_arm: bool = True, use_gripper: bool = False, use_legs: bool = False) -> None:
         super().__init__(model_path)
         self.use_arm = use_arm
         self.use_gripper = use_gripper  # Reserved flag; not used in current mapping
@@ -220,16 +233,6 @@ class SpotBase(Task[SpotBaseConfig]):
 
         Penalizes falling and large control magnitudes.
         """
-        # upright heuristic via torso height (qpos z)
-        # states = states[:, :-1, :]
-        # # print(states.shape)
-        # # print(controls.shape)
-        # base_z = states[..., 2]
-        # fallen = base_z < config.spot_fallen_threshold
-        # penalty = np.where(fallen, config.fall_penalty, 0.0)
-        # control_rew = -0.1 * (controls ** 2).sum(axis=-1)
-        # rewards = (control_rew - penalty).sum(axis=-1)
-        # print(rewards.shape)
         rewards = np.zeros(states.shape[0])
         return rewards
 

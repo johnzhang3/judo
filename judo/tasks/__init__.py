@@ -12,10 +12,12 @@ from judo.tasks.leap_cube import LeapCube, LeapCubeConfig
 from judo.tasks.leap_cube_down import LeapCubeDown, LeapCubeDownConfig
 from judo.tasks.spot_door_box import SpotDoorBox, SpotDoorBoxConfig
 from judo.tasks.spot.spot_base import SpotBase, SpotBaseConfig
+from judo.tasks.spot.spot_box import SpotBox, SpotBoxConfig
 
 _registered_tasks: Dict[str, Tuple[Type[Task], Type[TaskConfig]]] = {
     "spot_base": (SpotBase, SpotBaseConfig),
     "spot_door_box": (SpotDoorBox, SpotDoorBoxConfig),
+    "spot_box": (SpotBox, SpotBoxConfig),
     "cylinder_push": (CylinderPush, CylinderPushConfig),
     "cylinder_push_new": (CylinderPushNew, CylinderPushNewConfig),
     "cartpole": (Cartpole, CartpoleConfig),
@@ -57,4 +59,6 @@ __all__ = [
     "LeapCubeDownConfig",
     "SpotBase",
     "SpotBaseConfig",
+    "SpotBox",
+    "SpotBoxConfig",
 ]
