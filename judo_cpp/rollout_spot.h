@@ -15,11 +15,13 @@ py::tuple RolloutSpot(
 );
 
 // Single-step simulation that first runs the ONNX policy to produce controls.
-void SimSpot(
+// Returns the new policy output for next iteration.
+py::array_t<float> SimSpot(
     const mjModel* model,
     mjData*        data,
     const py::array_t<double>& x0,
-    const py::array_t<double>& controls
+    const py::array_t<double>& controls,
+    const py::array_t<float>& prev_policy
 );
 
 

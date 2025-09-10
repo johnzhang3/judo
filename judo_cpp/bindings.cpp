@@ -135,17 +135,29 @@ Returns:
           [](py::object model,
              py::object data,
              const py::array_t<double>& x0,
-             const py::array_t<double>& controls)
+             const py::array_t<double>& controls,
+             const py::array_t<float>& prev_policy)
           {
               auto model_ptr = reinterpret_cast<const mjModel*>(model.attr("_address").cast<std::uintptr_t>());
               auto data_ptr  = reinterpret_cast<mjData*>(data.attr("_address").cast<std::uintptr_t>());
-              SimSpot(model_ptr, data_ptr, x0, controls);
+              return SimSpot(model_ptr, data_ptr, x0, controls, prev_policy);
           },
           py::arg("model"),
           py::arg("data"),
           py::arg("x0"),
           py::arg("controls"),
+          py::arg("prev_policy"),
           R"doc(
 Run a single MuJoCo step with Spot ONNX policy to generate controls.
+
+Args:
+    model:       mujoco._structs.MjModel
+    data:        mujoco._structs.MjData
+    x0:          1D array of shape (nq+nv), initial [qpos;qvel]
+    controls:    1D array of shape (25), command vector for policy
+    prev_policy: 1D array of shape (12), previous policy output
+
+Returns:
+    1D array of shape (12): New policy output for next iteration
 )doc");
 }

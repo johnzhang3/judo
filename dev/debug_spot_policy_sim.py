@@ -141,7 +141,7 @@ def main() -> None:
     data = mujoco.MjData(model)
 
     default_policy_command = np.array(
-        [0, 0, 0] + list(ARM_STOWED_POS) + [0] * 12 + [0, 0, STANDING_HEIGHT_CMD],
+        [0.5, 0, 0] + list(ARM_STOWED_POS) + [0] * 12 + [0, 0, STANDING_HEIGHT_CMD],
         dtype=np.float64,
     )
     default_pose = np.array(

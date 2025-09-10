@@ -48,12 +48,13 @@ class SimBackend:
 
     def __init__(self, task_to_sim_ctrl: Callable) -> None:
         self.task_to_sim_ctrl = task_to_sim_ctrl
+        self.previous_policy_output = np.zeros((12))
 
     def sim(self, sim_model: MjModel, sim_data: MjData, sim_controls: np.ndarray) -> None:
         # processed_ctrl = self.task_to_sim_ctrl(sim_controls)
         x0 = np.concatenate([sim_data.qpos, sim_data.qvel])
         controls = self.task_to_sim_ctrl(sim_controls)
         controls = controls.flatten()
-        sim_spot(sim_model, sim_data, x0, controls)
+        self.previous_policy_output = sim_spot(sim_model, sim_data, x0, controls, self.previous_policy_output)
 
 

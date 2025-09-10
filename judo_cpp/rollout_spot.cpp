@@ -14,9 +14,6 @@
 
 namespace py = pybind11;
 
-// Persist prev_policy per-simulator (MjData*) across SimSpot calls
-static std::unordered_map<const mjData*, std::vector<float>> g_prev_policy_map;
-static std::mutex g_prev_policy_mu;
 
 // Helper to turn std::vector<double> into py::array with ownership
 static py::array_t<double> make_array_owned(std::vector<double>& buf, int B, int T, int D) {
@@ -91,21 +88,51 @@ static std::string get_policy_path() {
     return std::string("judo_cpp/policy/xinghao_policy_v1.onnx");
 }
 
-// Permutation indices and defaults
-static const int ORBIT_TO_MJ_LEGS[12] = {0,3,6,9,1,4,7,10,2,5,8,11};
-static const int MJ_TO_ORBIT_19[19]   = {1,6,11,2,7,12,3,8,13,4,9,14,0,5,10,15,16,17,18};
-static const double DEFAULT_JOINT_POS[19] = {
+// Constants matching Python implementation
+static const double ACTION_SCALE = 0.2;
+static const double STANDING_POS_RL[19] = {
     0.12, 0.5, -1.0,  -0.12, 0.5, -1.0,  0.12, 0.5, -1.0,  -0.12, 0.5, -1.0,
     0.0, -0.9, 1.8,  0.0, -0.9, 0.0, -1.54
 };
 
+// Isaac <-> MuJoCo conversion indices
+static const int ISAAC_TO_MUJOCO_INDICES_12[12] = {0, 4, 8, 1, 5, 9, 2, 6, 10, 3, 7, 11};
+static const int ISAAC_TO_MUJOCO_INDICES_19[19] = {1, 6, 11, 2, 7, 12, 3, 8, 13, 4, 9, 14, 0, 5, 10, 15, 16, 17, 18};
+static const int MUJOCO_TO_ISAAC_INDICES_12[12] = {0, 3, 6, 9, 1, 4, 7, 10, 2, 5, 8, 11};
+static const int MUJOCO_TO_ISAAC_INDICES_19[19] = {12, 0, 3, 6, 9, 13, 1, 4, 7, 10, 14, 2, 5, 8, 11, 15, 16, 17, 18};
+
+// Helper functions for coordinate transformations
+static void isaac_to_mujoco_12(const double* isaac, double* mujoco) {
+    for (int i = 0; i < 12; i++) {
+        mujoco[i] = isaac[ISAAC_TO_MUJOCO_INDICES_12[i]];
+    }
+}
+
+static void mujoco_to_isaac_19(const double* mujoco, double* isaac) {
+    for (int i = 0; i < 19; i++) {
+        isaac[i] = mujoco[MUJOCO_TO_ISAAC_INDICES_19[i]];
+    }
+}
+
 static inline void compute_indices(const mjModel* m, int& base_qpos_start, int& base_qvel_start, int& leg_qpos_start, int& leg_qvel_start) {
-    int base_id = mj_name2id(m, mjOBJ_BODY, "spot/body");
-    base_qpos_start = m->jnt_qposadr[m->body_jntadr[base_id]];
-    base_qvel_start = m->jnt_dofadr[m->body_jntadr[base_id]];
-    int first_leg_id = mj_name2id(m, mjOBJ_BODY, "spot/front_left_hip");
-    leg_qpos_start = m->jnt_qposadr[m->body_jntadr[first_leg_id]];
-    leg_qvel_start = m->jnt_dofadr[m->body_jntadr[first_leg_id]];
+    // Prefer robust detection of the free joint (base)
+    int free_joint_idx = -1;
+    for (int j = 0; j < m->njnt; j++) {
+        if (m->jnt_type[j] == mjJNT_FREE) {
+            free_joint_idx = j;
+            break;
+        }
+    }
+    if (free_joint_idx == -1) {
+        // Fallback to joint 0
+        free_joint_idx = 0;
+    }
+    base_qpos_start = m->jnt_qposadr[free_joint_idx];
+    base_qvel_start = m->jnt_dofadr[free_joint_idx];
+    
+    // After the free joint come the actuated joints. For Spot, we assume 19 joints follow.
+    leg_qpos_start = base_qpos_start + 7;
+    leg_qvel_start = base_qvel_start + 6;
 }
 
 static inline void build_observation(const mjModel* m, mjData* d, const double* command_ptr,
@@ -114,15 +141,30 @@ static inline void build_observation(const mjModel* m, mjData* d, const double* 
                                      std::vector<float>& obs_out) {
     obs_out.resize(84);
     int off = 0;
+    
+    // Get quaternion (w,x,y,z format in MuJoCo)
+    double quat[4];
+    for (int i = 0; i < 4; i++) {
+        quat[i] = d->qpos[base_qpos_start + 3 + i];
+    }
+    
+    // Compute inverse quaternion for body-frame transformations
     double invq[4];
-    mju_negQuat(invq, d->qpos + base_qpos_start + 3);
+    mju_negQuat(invq, quat);
+    
+    // Base linear velocity in body frame (inverse rotation)
     double blin[3];
     mju_rotVecQuat(blin, d->qvel + base_qvel_start, invq);
     for (int i=0;i<3;i++) obs_out[off++] = static_cast<float>(blin[i]);
+    
+    // Base angular velocity (already in body frame)
     for (int i=0;i<3;i++) obs_out[off++] = static_cast<float>(d->qvel[base_qvel_start + 3 + i]);
+    
+    // Projected gravity in body frame (inverse rotation)
     double gvec[3] = {0.0, 0.0, -1.0};
-    mju_rotVecQuat(gvec, gvec, invq);
-    for (int i=0;i<3;i++) obs_out[off++] = static_cast<float>(gvec[i]);
+    double gvec_rotated[3];
+    mju_rotVecQuat(gvec_rotated, gvec, invq);
+    for (int i=0;i<3;i++) obs_out[off++] = static_cast<float>(gvec_rotated[i]);
     for (int i=0;i<3;i++) obs_out[off++] = static_cast<float>(command_ptr[0 + i]);
     for (int i=0;i<7;i++) obs_out[off++] = static_cast<float>(command_ptr[3 + i]);
     for (int i=0;i<12;i++) obs_out[off++] = static_cast<float>(command_ptr[10 + i]);
@@ -130,35 +172,35 @@ static inline void build_observation(const mjModel* m, mjData* d, const double* 
     double jpos_raw[19];
     double jvel_raw[19];
     for (int i=0;i<19;i++) {
-        jpos_raw[i] = d->qpos[leg_qpos_start + i] - DEFAULT_JOINT_POS[i];
+        jpos_raw[i] = d->qpos[leg_qpos_start + i] - STANDING_POS_RL[i];
         jvel_raw[i] = d->qvel[leg_qvel_start + i];
     }
-    double jpos_orbit[19];
-    double jvel_orbit[19];
-    for (int i=0;i<19;i++) {
-        int idx = MJ_TO_ORBIT_19[i];
-        jpos_orbit[i] = jpos_raw[idx];
-        jvel_orbit[i] = jvel_raw[idx];
-    }
-    for (int i=0;i<19;i++) obs_out[off++] = static_cast<float>(jpos_orbit[i]);
-    for (int i=0;i<19;i++) obs_out[off++] = static_cast<float>(jvel_orbit[i]);
+    double jpos_isaac[19];
+    double jvel_isaac[19];
+    mujoco_to_isaac_19(jpos_raw, jpos_isaac);
+    mujoco_to_isaac_19(jvel_raw, jvel_isaac);
+    for (int i=0;i<19;i++) obs_out[off++] = static_cast<float>(jpos_isaac[i]);
+    for (int i=0;i<19;i++) obs_out[off++] = static_cast<float>(jvel_isaac[i]);
     for (int i=0;i<12;i++) obs_out[off++] = (i < (int)prev_policy.size() ? prev_policy[i] : 0.0f);
 }
 
 static inline void compute_control_from_policy(const float* policy_out, const double* command_ptr, std::vector<double>& ctrl_out) {
     ctrl_out.resize(19);
-    double legs_orbit[12];
-    for (int i=0;i<12;i++) legs_orbit[i] = 0.2 * static_cast<double>(policy_out[i]);
-    double legs_mj[12];
-    for (int i=0;i<12;i++) legs_mj[i] = legs_orbit[ORBIT_TO_MJ_LEGS[i]] + DEFAULT_JOINT_POS[i];
-    for (int i=0;i<12;i++) ctrl_out[i] = legs_mj[i];
+    double action_isaac[12];
+    for (int i=0;i<12;i++) action_isaac[i] = static_cast<double>(policy_out[i]);
+    double target_leg_isaac[12];
+    for (int i=0;i<12;i++) target_leg_isaac[i] = action_isaac[i] * ACTION_SCALE;
+    double target_leg_mj[12];
+    isaac_to_mujoco_12(target_leg_isaac, target_leg_mj);
+    for (int i=0;i<12;i++) target_leg_mj[i] += STANDING_POS_RL[i];
+    for (int i=0;i<12;i++) ctrl_out[i] = target_leg_mj[i];
     for (int i=0;i<7;i++) ctrl_out[12 + i] = static_cast<double>(command_ptr[3 + i]);
     const double* leg_cmd = command_ptr + 10;
-    auto norm3 = [](const double* v){ return std::abs(v[0]) + std::abs(v[1]) + std::abs(v[2]); };
-    if (norm3(leg_cmd + 0) > 0.0)      { for (int i=0;i<3;i++) ctrl_out[0 + i] = leg_cmd[0 + i]; }
-    else if (norm3(leg_cmd + 3) > 0.0) { for (int i=0;i<3;i++) ctrl_out[3 + i] = leg_cmd[3 + i]; }
-    else if (norm3(leg_cmd + 6) > 0.0) { for (int i=0;i<3;i++) ctrl_out[6 + i] = leg_cmd[6 + i]; }
-    else if (norm3(leg_cmd + 9) > 0.0) { for (int i=0;i<3;i++) ctrl_out[9 + i] = leg_cmd[9 + i]; }
+    auto has_nonzero = [](const double* v){ return v[0] != 0.0 || v[1] != 0.0 || v[2] != 0.0; };
+    if (has_nonzero(leg_cmd + 0))      { for (int i=0;i<3;i++) ctrl_out[0 + i] = leg_cmd[0 + i]; }
+    else if (has_nonzero(leg_cmd + 3)) { for (int i=0;i<3;i++) ctrl_out[3 + i] = leg_cmd[3 + i]; }
+    else if (has_nonzero(leg_cmd + 6)) { for (int i=0;i<3;i++) ctrl_out[6 + i] = leg_cmd[6 + i]; }
+    else if (has_nonzero(leg_cmd + 9)) { for (int i=0;i<3;i++) ctrl_out[9 + i] = leg_cmd[9 + i]; }
 }
 
 py::tuple RolloutSpot(
@@ -258,11 +300,12 @@ py::tuple RolloutSpot(
     return py::make_tuple(states_arr, sens_arr);
 }
 
-void SimSpot(
+py::array_t<float> SimSpot(
     const mjModel* model,
     mjData*        data,
     const py::array_t<double>& x0,
-    const py::array_t<double>& controls
+    const py::array_t<double>& controls,
+    const py::array_t<float>& prev_policy
 ) {
     int nq = model->nq;
     int nv = model->nv;
@@ -273,6 +316,9 @@ void SimSpot(
     }
     if (controls.ndim() != 1) {
         throw std::runtime_error("controls must be a 1D array of command");
+    }
+    if (prev_policy.ndim() != 1 || prev_policy.shape(0) != 12) {
+        throw std::runtime_error("prev_policy must be a 1D array of shape (12)");
     }
 
     data->time = 0.0;
@@ -290,16 +336,7 @@ void SimSpot(
     for (int j = 0; j < cmd_dim && j < 25; j++) cmd_buf[j] = static_cast<double>(ctrl_unchecked(j));
     for (int j = cmd_dim; j < 25; j++) cmd_buf[j] = 0.0;
 
-    std::vector<float> prev;
-    {
-        std::lock_guard<std::mutex> lock(g_prev_policy_mu);
-        auto it = g_prev_policy_map.find(data);
-        if (it != g_prev_policy_map.end()) {
-            prev = it->second;
-        } else {
-            prev.assign(12, 0.0f);
-        }
-    }
+    std::vector<float> prev(prev_policy.data(), prev_policy.data() + 12);
 
     std::vector<float> obs;
     build_observation(model, data, cmd_buf, prev, base_qpos_start, base_qvel_start, leg_qpos_start, leg_qvel_start, obs);
@@ -315,8 +352,11 @@ void SimSpot(
     for (int j = 0; j < nu; j++) data->ctrl[j] = ctrl[j];
     mj_step(model, data);
 
-    {
-        std::lock_guard<std::mutex> lock(g_prev_policy_mu);
-        g_prev_policy_map[data] = policy_out_vec;
+    // Return new policy output as numpy array
+    auto result = py::array_t<float>(12);
+    auto result_ptr = result.mutable_unchecked<1>();
+    for (int i = 0; i < 12; i++) {
+        result_ptr(i) = policy_out_vec[i];
     }
+    return result;
 }
