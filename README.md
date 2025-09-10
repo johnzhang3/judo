@@ -58,6 +58,9 @@ To create our environment (and activate it each time later), run the following i
 # every time you want to activate
 pixi shell -e dev
 
+# build judo cpp bindings
+pixi run build
+
 # first time only
 pre-commit install
 pybind11-stubgen mujoco -o typings/
@@ -68,6 +71,12 @@ To start the simulator, you can simply run:
 ```bash
 judo
 ```
+
+To start with a specific config file
+```bash
+pixi run -e dev judo --config-name test_policy_backend
+```
+
 This will start the stack and print a link in the terminal that will open the app in your browser, e.g.,
 ```
 http://localhost:8080

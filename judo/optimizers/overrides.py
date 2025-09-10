@@ -222,3 +222,38 @@ def set_default_fr3_pick_overrides() -> None:
             "temperature": 0.002,
         },
     )
+
+
+def set_default_spot_locomotion_overrides() -> None:
+    """Sets the default task-specific controller config overrides for the spot locomotion task."""
+    # set_config_overrides(
+    #     "spot_locomotion",
+    #     PredictiveSamplingConfig,
+    #     {
+    #         "num_nodes": 2,
+    #         "num_rollouts": 16,
+    #         "use_noise_ramp": False,
+    #         "nu": 25
+    #     },
+    # )
+    # set_config_overrides(
+    #     "spot_locomotion",
+    #     CrossEntropyMethodConfig,
+    #     {
+    #         "num_nodes": 2,
+    #         "num_rollouts": 16,
+    #         "num_elites": 4,
+    #         "use_noise_ramp": False,
+    #         "nu": 19
+    #     },
+    # )
+    # set_config_overrides(
+    #     "spot_locomotion",
+    #     MPPIConfig,
+    #     {
+    #         "num_nodes": 2,
+    #         "num_rollouts": 16,
+    #         "use_noise_ramp": False,
+    #     },
+    # )
+    # pass

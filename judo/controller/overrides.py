@@ -79,3 +79,15 @@ def set_default_fr3_pick_overrides() -> None:
             "control_freq": 20.0,
         },
     )
+
+
+def set_default_spot_locomotion_overrides() -> None:
+    """Sets the default task-specific controller config overrides for the spot locomotion task."""
+    set_config_overrides(
+        "spot_locomotion",
+        ControllerConfig,
+        {
+            "horizon": 1.0,
+            "spline_order": "zero",
+        },
+    )
