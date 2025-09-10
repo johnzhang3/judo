@@ -27,7 +27,7 @@ from judo.tasks.spot.spot_constants import (
 from judo import MODEL_PATH
 from judo.tasks.base import Task, TaskConfig
 from judo.utils.mujoco_spot import RolloutBackend, SimBackend
-XML_PATH = str(MODEL_PATH / "xml/spot_locomotion.xml")
+XML_PATH = str(MODEL_PATH / "xml/spot_components/robot.xml")
 
 
 @dataclass
