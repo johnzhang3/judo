@@ -21,4 +21,9 @@
   <include file="actuator.xml" />
   <include file="sensor.xml" />
   <include file="contact.xml" />
+  <sensor>
+    <framepos name="trace_body" objtype="site" objname="site_body"/>
+    <framepos name="trace_fngr_site" objtype="site" objname="site_arm_link_fngr"/>
+    <framepos name="trace_chair" objtype="site" objname="trace_yellow_chair"/>
+  </sensor>
 </mujoco>
