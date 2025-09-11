@@ -13,12 +13,14 @@ from judo.tasks.spot_door_box import SpotDoorBox, SpotDoorBoxConfig
 from judo.tasks.spot.spot_base import SpotBase, SpotBaseConfig
 from judo.tasks.spot.spot_box import SpotBox, SpotBoxConfig
 from judo.tasks.spot.spot_yellow_chair import SpotYellowChair, SpotYellowChairConfig
+from judo.tasks.spot.spot_yellow_chair_ramp import SpotYellowChairRamp, SpotYellowChairRampConfig
 
 _registered_tasks: Dict[str, Tuple[Type[Task], Type[TaskConfig]]] = {
     "spot_base": (SpotBase, SpotBaseConfig),
     "spot_door_box": (SpotDoorBox, SpotDoorBoxConfig),
     "spot_box": (SpotBox, SpotBoxConfig),
     "spot_yellow_chair": (SpotYellowChair, SpotYellowChairConfig),
+    "spot_yellow_chair_ramp": (SpotYellowChairRamp, SpotYellowChairRampConfig),
     "cylinder_push": (CylinderPush, CylinderPushConfig),
     "cartpole": (Cartpole, CartpoleConfig),
     "fr3_pick": (FR3Pick, FR3PickConfig),
@@ -61,4 +63,6 @@ __all__ = [
     "SpotBoxConfig",
     "SpotYellowChair",
     "SpotYellowChairConfig",
+    "SpotYellowChairRamp",
+    "SpotYellowChairRampConfig",
 ]
