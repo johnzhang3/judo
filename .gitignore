@@ -192,3 +192,4 @@ MUJOCO_LOG.TXT
 # *.stl
 
 .vscode/
+*.h5

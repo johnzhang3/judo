@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
-
+from mujoco import MjModel, MjData
 from judo.utils.indexing import get_pos_indices, get_sensor_indices, get_vel_indices
 from judo import MODEL_PATH
 from judo.tasks.spot.spot_constants import (
@@ -39,6 +39,8 @@ class SpotYellowChairConfig(SpotBaseConfig):
     orientation_threshold: float = 0.7
     w_controls: float = 2.0
     w_object_velocity: float = 64.0
+    position_tolerance: float = 0.2
+    orientation_tolerance: float = 0.1
 
 
 class SpotYellowChair(SpotBase[SpotYellowChairConfig]):
@@ -159,3 +161,21 @@ class SpotYellowChair(SpotBase[SpotYellowChairConfig]):
                 *reset_object_pose,
             ]
         )
+
+    def success(self, model: MjModel, data: MjData, config: SpotYellowChairConfig, metadata: dict[str, Any] | None = None) -> bool:
+        """Check if the yellow chair has reached the goal position and orientation within tolerance."""
+        # Get object position and orientation
+        object_pos = data.qpos[self.object_pose_idx[0:3]]
+        
+        # Get object z-axis sensor data for orientation check
+        object_z_axis = data.sensordata[self.object_z_axis_idx]
+        
+        # Check position tolerance
+        position_distance = np.linalg.norm(object_pos - config.goal_position)
+        position_success = position_distance <= config.position_tolerance
+        
+        # Check orientation tolerance (object should be upright, z-axis aligned with world z-axis)
+        orientation_alignment = np.dot(object_z_axis, Z_AXIS)
+        orientation_success = orientation_alignment >= (1.0 - config.orientation_tolerance)
+        
+        return bool(position_success and orientation_success)
