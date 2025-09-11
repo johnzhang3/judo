@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, TypeVar
+from typing import Any, TypeVar, Generic
 
 import mujoco
 import numpy as np
@@ -27,7 +27,7 @@ from judo.tasks.spot.spot_constants import (
 from judo import MODEL_PATH
 from judo.tasks.base import Task, TaskConfig
 from judo.utils.mujoco_spot import RolloutBackend, SimBackend
-XML_PATH = str(MODEL_PATH / "xml/spot_locomotion.xml")
+XML_PATH = str(MODEL_PATH / "xml/spot_components/robot.xml")
 
 
 @dataclass
@@ -53,7 +53,7 @@ class SpotBaseConfig(TaskConfig):
 ConfigT = TypeVar("ConfigT", bound=SpotBaseConfig)
 
 
-class SpotBase(Task[SpotBaseConfig]):
+class SpotBase(Task[ConfigT], Generic[ConfigT]):
     """Flexible base task for Spot locomotion/skills.
 
     Controls are a compact vector mapped to the 25-dim policy command:
@@ -111,6 +111,8 @@ class SpotBase(Task[SpotBaseConfig]):
         elif self.use_arm and self.use_legs:  # Base, arm, and legs
             lower_bound = np.concatenate((BASE_LOWER, ARM_LOWER, LEGS_LOWER, SELECTION_LOWER))
             upper_bound = np.concatenate((BASE_UPPER, ARM_UPPER, LEGS_UPPER, SELECTION_UPPER))
+        else:
+            raise ValueError("Invalid combination of use_arm and use_legs")
 
         return np.stack([lower_bound, upper_bound], axis=-1)
 
@@ -226,7 +228,7 @@ class SpotBase(Task[SpotBaseConfig]):
         states: np.ndarray,
         sensors: np.ndarray,
         controls: np.ndarray,
-        config: SpotBaseConfig,
+        config: ConfigT,
         system_metadata: dict[str, Any] | None = None,
     ) -> np.ndarray:
         """Simple standing reward used as a default for base class.
