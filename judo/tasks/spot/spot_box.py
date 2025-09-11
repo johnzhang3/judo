@@ -51,7 +51,7 @@ class SpotBox(SpotBase):
         sensors: np.ndarray,
         controls: np.ndarray,
         config: SpotBoxConfig,
-        additional_info: dict[str, Any],
+        system_metadata: dict[str, Any] | None = None,
     ) -> np.ndarray:
         """Reward function for the Spot box moving task."""
         batch_size = states.shape[0]
