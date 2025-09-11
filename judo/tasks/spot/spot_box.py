@@ -13,7 +13,7 @@ from judo.tasks.spot.spot_constants import (
 )
 from judo.tasks.spot.spot_base import GOAL_POSITIONS, SpotBase, SpotBaseConfig
 
-XML_PATH = str(MODEL_PATH / "xml/spot_box.xml")
+XML_PATH = str(MODEL_PATH / "xml/spot_components/spot_box.xml")
 
 Z_AXIS = np.array([0.0, 0.0, 1.0])
 RESET_OBJECT_POSE = np.array([3, 0, 0.275, 1, 0, 0, 0])
