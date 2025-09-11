@@ -144,8 +144,8 @@ class SpotYellowChair(SpotBase[SpotYellowChairConfig]):
         radius = RADIUS_MIN + (RADIUS_MAX - RADIUS_MIN) * np.random.rand()
         theta = 2 * np.pi * np.random.rand()
         object_pos = np.array([radius * np.cos(theta), radius * np.cos(theta)]) + np.random.randn(2)
-        reset_object_pose = np.array([*object_pos, 0.254, 1, 0, 0, 0])
-
+        # reset_object_pose = np.array([*object_pos, 0.254, 1, 0, 0, 0])
+        reset_object_pose = np.array([*object_pos, 0.375, np.cos(np.pi / 4), -np.sin(np.pi / 4), 0, 0])
         return np.array(
             [
                 *np.random.randn(2),
