@@ -3,7 +3,6 @@
 from judo.config import set_config_overrides
 from judo.controller.controller import ControllerConfig
 
-
 def set_default_cylinder_push_overrides() -> None:
     """Sets the default task-specific controller config overrides for the cylinder push task."""
     set_config_overrides(
@@ -81,13 +80,22 @@ def set_default_fr3_pick_overrides() -> None:
     )
 
 
-def set_default_spot_locomotion_overrides() -> None:
+def set_default_spot_yellow_chair_overrides() -> None:
     """Sets the default task-specific controller config overrides for the spot locomotion task."""
     set_config_overrides(
-        "spot_locomotion",
+        "spot_yellow_chair",
         ControllerConfig,
         {
-            "horizon": 1.0,
-            "spline_order": "zero",
+            "horizon": 3.0,
+        },
+    )
+
+def set_default_spot_yellow_chair_ramp_overrides() -> None:
+    """Sets the default task-specific controller config overrides for the spot yellow chair ramp task."""
+    set_config_overrides(
+        "spot_yellow_chair_ramp",
+        ControllerConfig,
+        {
+            "horizon": 3.0,
         },
     )

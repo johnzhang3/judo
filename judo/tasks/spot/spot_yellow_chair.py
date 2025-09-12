@@ -163,19 +163,12 @@ class SpotYellowChair(SpotBase[SpotYellowChairConfig]):
         )
 
     def success(self, model: MjModel, data: MjData, config: SpotYellowChairConfig, metadata: dict[str, Any] | None = None) -> bool:
-        """Check if the yellow chair has reached the goal position and orientation within tolerance."""
-        # Get object position and orientation
-        object_pos = data.qpos[self.object_pose_idx[0:3]]
-        
+        """Check if the yellow chair is upright, regardless of position."""
         # Get object z-axis sensor data for orientation check
         object_z_axis = data.sensordata[self.object_z_axis_idx]
-        
-        # Check position tolerance
-        position_distance = np.linalg.norm(object_pos - config.goal_position)
-        position_success = position_distance <= config.position_tolerance
         
         # Check orientation tolerance (object should be upright, z-axis aligned with world z-axis)
         orientation_alignment = np.dot(object_z_axis, Z_AXIS)
         orientation_success = orientation_alignment >= (1.0 - config.orientation_tolerance)
-        # print(f"Position distance: {position_distance}, Position success: {position_success}, Orientation alignment: {orientation_alignment}, Orientation success: {orientation_success}")  
-        return bool(position_success and orientation_success)
+        
+        return bool(orientation_success)

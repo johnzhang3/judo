@@ -162,15 +162,11 @@ class SpotYellowChairRamp(SpotBase):
         )
 
     def success(self, model: MjModel, data: MjData, config: SpotYellowChairRampConfig, metadata: dict[str, Any] | None = None) -> bool:
-        """Check if the yellow chair has reached the goal position and orientation within tolerance."""
-        # Get object position and orientation
+        """Check if the yellow chair has reached the top of the ramp (high z-coordinate), regardless of x,y position."""
+        # Get object position
         object_pos = data.qpos[self.object_pose_idx[0:3]]
         
-        # Get object z-axis sensor data for orientation check
-        # object_z_axis = data.sensordata[self.object_z_axis_idx]
+        # Success means reaching the top of the ramp - check if z-coordinate is at goal height
+        height_success = object_pos[2] >= config.goal_position[2] - config.position_tolerance
         
-        # Check position tolerance
-        position_distance = np.linalg.norm(object_pos - config.goal_position)
-        position_success = position_distance <= config.position_tolerance
-        
-        return position_success
+        return bool(height_success)

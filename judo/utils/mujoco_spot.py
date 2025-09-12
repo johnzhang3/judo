@@ -11,6 +11,7 @@ class RolloutBackend:
 
     def __init__(self, num_threads: int, backend: Literal["mujoco"], task_to_sim_ctrl: Callable) -> None:
         self.backend = backend
+        # TODO: properly implement this
         if self.backend == "mujoco":
             self.rollout_func = rollout_spot
         else:
@@ -41,6 +42,13 @@ class RolloutBackend:
         controls = self.task_to_sim_ctrl(controls)
         states, sensors = self.rollout_func(ms, ds, x0_batched, controls)
         return np.array(states), np.array(sensors)
+
+    def update(self, num_threads: int) -> None:
+        """Update the backend with a new number of threads."""
+        if self.backend == "mujoco":
+            self.rollout_func = rollout_spot
+        else:
+            raise ValueError(f"Unknown backend: {self.backend}")
 
 
 class SimBackend:

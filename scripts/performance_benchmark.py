@@ -483,7 +483,7 @@ if __name__ == "__main__":
             "spot_yellow_chair_ramp",
         ],
         optimizer_names=None,
-        num_episodes=1,
+        num_episodes=10,
         episode_length_s=[
             # 30.0,  # cylinder_push
             # 10.0,  # cartpole
@@ -494,7 +494,7 @@ if __name__ == "__main__":
             # 60.0,  # leap_cube
             # 60.0,  # leap_cube_down
             # 10.0,  # walker
-            # 120.0,  # spot_yellow_chair
+            # 30.0,  # spot_yellow_chair
             120.0,  # spot_yellow_chair_ramp
         ],
         viz_dt=0.02,

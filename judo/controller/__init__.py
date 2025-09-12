@@ -9,7 +9,8 @@ from judo.controller.overrides import (
     set_default_fr3_pick_overrides,
     set_default_leap_cube_down_overrides,
     set_default_leap_cube_overrides,
-    set_default_spot_locomotion_overrides,
+    set_default_spot_yellow_chair_overrides,
+    set_default_spot_yellow_chair_ramp_overrides,
 )
 from judo.utils.assets import download_and_extract_meshes
 
@@ -25,7 +26,8 @@ set_default_cylinder_push_overrides()
 set_default_fr3_pick_overrides()
 set_default_leap_cube_overrides()
 set_default_leap_cube_down_overrides()
-set_default_spot_locomotion_overrides()
+set_default_spot_yellow_chair_overrides()
+set_default_spot_yellow_chair_ramp_overrides()
 
 __all__ = [
     "Controller",
