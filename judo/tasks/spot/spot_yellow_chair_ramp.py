@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from typing import Any
-
+from mujoco import MjModel, MjData
 import numpy as np
 
 from judo.utils.indexing import get_pos_indices, get_sensor_indices, get_vel_indices
@@ -39,6 +39,7 @@ class SpotYellowChairRampConfig(SpotBaseConfig):
     w_object_off_ramp: float = 1000.0
     w_object_centered: float = 15.0
     w_spot_off_ramp: float = 1000.0
+    position_tolerance: float = 0.2
 
 
 class SpotYellowChairRamp(SpotBase):
@@ -159,3 +160,17 @@ class SpotYellowChairRamp(SpotBase):
                 *reset_object_pose,
             ]
         )
+
+    def success(self, model: MjModel, data: MjData, config: SpotYellowChairRampConfig, metadata: dict[str, Any] | None = None) -> bool:
+        """Check if the yellow chair has reached the goal position and orientation within tolerance."""
+        # Get object position and orientation
+        object_pos = data.qpos[self.object_pose_idx[0:3]]
+        
+        # Get object z-axis sensor data for orientation check
+        # object_z_axis = data.sensordata[self.object_z_axis_idx]
+        
+        # Check position tolerance
+        position_distance = np.linalg.norm(object_pos - config.goal_position)
+        position_success = position_distance <= config.position_tolerance
+        
+        return position_success

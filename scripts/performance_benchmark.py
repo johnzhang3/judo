@@ -15,6 +15,15 @@ from judo.controller import Controller, ControllerConfig
 from judo.optimizers import Optimizer, OptimizerConfig, get_registered_optimizers
 from judo.tasks import Task, TaskConfig, get_registered_tasks
 
+# Define the Spot SimBackend from the provided code
+import onnxruntime
+from scipy.spatial.transform import Rotation as R
+from judo.utils.mujoco_spot import SimBackend
+from judo.tasks.spot.spot_base import SpotBase
+
+
+SPOT_BACKEND_AVAILABLE = True
+
 # ##### #
 # UTILS #
 # ##### #
@@ -182,6 +191,12 @@ def benchmark_single_task_and_optimizer(
     # storage for outcomes
     benchmark_results = []
 
+    # Initialize Spot backend if needed
+    spot_sim_backend = None
+    is_spot_task = hasattr(task, 'task_to_sim_ctrl')
+    if is_spot_task:
+        spot_sim_backend = SimBackend(task_to_sim_ctrl=task.task_to_sim_ctrl)
+
     # loop through episodes
     for i in range(num_episodes):
         np.random.seed(i)  # reset seed for each task for fairness
@@ -205,6 +220,7 @@ def benchmark_single_task_and_optimizer(
             "metrics": {},
         }
         did_break = False
+        current_action = None  # Store current action for Spot tasks
         for step in tqdm(range(num_steps), desc=f"Episode {i + 1}/{num_episodes}", leave=False):
             curr_time = step * step_dt
             curr_state = np.concatenate([task.data.qpos, task.data.qvel])
@@ -213,7 +229,10 @@ def benchmark_single_task_and_optimizer(
             if step % loop_steps_per_plan_step == 0:  # planning step (updates spline)
                 controller.update_action(curr_state, curr_time)
             if step % loop_steps_per_ctrl_step == 0:  # control step (updates control from spline)
-                task.data.ctrl[:] = controller.action(curr_time)
+                current_action = controller.action(curr_time)
+                # For Spot tasks, we don't set ctrl directly - it's handled in the sim step
+                if not is_spot_task:
+                    task.data.ctrl[:] = current_action
             if step % loop_steps_per_viz_step == 0:  # visualization step (no-op here, but could be used for logging)
                 curr_episode_results["qpos_traj"].append(np.array(task.data.qpos))
                 mocap_pos = np.array(task.data.mocap_pos)  # (num_mocap, 3)
@@ -222,7 +241,12 @@ def benchmark_single_task_and_optimizer(
                 curr_episode_results["mocap_quat_traj"].append(mocap_quat)
             if step % loop_steps_per_sim_step == 0:  # simulation step (updates simulation state)
                 task.pre_sim_step()
-                mj_step(sim_model, task.data)
+                if is_spot_task and spot_sim_backend is not None and current_action is not None:
+                    # Use Spot-specific simulation backend
+                    spot_sim_backend.sim(sim_model, task.data, current_action)
+                else:
+                    # Use standard MuJoCo step
+                    mj_step(sim_model, task.data)
                 controller.system_metadata = task.get_sim_metadata()
 
                 # compute the instantaneous reward in the simulation
@@ -447,7 +471,7 @@ if __name__ == "__main__":
     benchmark_multiple_tasks_and_optimizers(
         task_names=[
             # "cylinder_push",
-            "cartpole",
+            # "cartpole",
             # "fr3_pick",
             # "g1_manipulation",
             # "g1_stand",
@@ -455,12 +479,14 @@ if __name__ == "__main__":
             # "leap_cube",
             # "leap_cube_down",
             # "walker",
+            # "spot_yellow_chair",
+            "spot_yellow_chair_ramp",
         ],
         optimizer_names=None,
-        num_episodes=10,
+        num_episodes=1,
         episode_length_s=[
             # 30.0,  # cylinder_push
-            10.0,  # cartpole
+            # 10.0,  # cartpole
             # 30.0,  # fr3_pick
             # 30.0,  # g1_manipulation
             # 30.0,  # g1_stand
@@ -468,6 +494,8 @@ if __name__ == "__main__":
             # 60.0,  # leap_cube
             # 60.0,  # leap_cube_down
             # 10.0,  # walker
+            # 120.0,  # spot_yellow_chair
+            120.0,  # spot_yellow_chair_ramp
         ],
         viz_dt=0.02,
     )

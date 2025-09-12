@@ -177,5 +177,5 @@ class SpotYellowChair(SpotBase[SpotYellowChairConfig]):
         # Check orientation tolerance (object should be upright, z-axis aligned with world z-axis)
         orientation_alignment = np.dot(object_z_axis, Z_AXIS)
         orientation_success = orientation_alignment >= (1.0 - config.orientation_tolerance)
-        
+        # print(f"Position distance: {position_distance}, Position success: {position_success}, Orientation alignment: {orientation_alignment}, Orientation success: {orientation_success}")  
         return bool(position_success and orientation_success)
