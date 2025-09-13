@@ -19,11 +19,14 @@ Z_AXIS = np.array([0.0, 0.0, 1.0])
 RESET_OBJECT_POSE = np.array([3, 0, 0.275, 1, 0, 0, 0])
 # annulus object position sampling
 RADIUS_MIN = 1.0
-RADIUS_MAX = 2.0
+RADIUS_MAX = 1.5
 USE_LEGS = False
 
 HARDWARE_FENCE_X = (-2.0, 3.0)
 HARDWARE_FENCE_Y = (-3.0, 2.5)
+
+DEFAULT_SPOT_POS = np.array([-1.5, 0.0])
+DEFAULT_OBJECT_POS = np.array([0.0, 0.0])
 
 @dataclass
 class SpotYellowChairConfig(SpotBaseConfig):
@@ -143,14 +146,17 @@ class SpotYellowChair(SpotBase[SpotYellowChairConfig]):
     @property
     def reset_pose(self) -> np.ndarray:
         """Reset pose of robot and object."""
-        radius = RADIUS_MIN + (RADIUS_MAX - RADIUS_MIN) * np.random.rand()
-        theta = 2 * np.pi * np.random.rand()
-        object_pos = np.array([radius * np.cos(theta), radius * np.cos(theta)]) + np.random.randn(2)
+        # radius = RADIUS_MIN + (RADIUS_MAX - RADIUS_MIN) * np.random.rand()
+        # theta = 2 * np.pi * np.random.rand()
+        # object_pos = np.array([radius * np.cos(theta), radius * np.cos(theta)]) + np.random.randn(2)
+        object_pos = DEFAULT_OBJECT_POS + np.random.randn(2)*0.001
         # reset_object_pose = np.array([*object_pos, 0.254, 1, 0, 0, 0])
-        reset_object_pose = np.array([*object_pos, 0.375, np.cos(np.pi / 4), -np.sin(np.pi / 4), 0, 0])
+        # random_angle = 2 * np.pi * np.random.rand()
+        reset_object_pose = np.array([*object_pos, 0.375, np.cos(np.pi / 4), -np.sin(np.pi / 4) , 0, 0 ])
+        spot_pos = DEFAULT_SPOT_POS + np.random.randn(2)*0.001
         return np.array(
             [
-                *np.random.randn(2),
+                *spot_pos,
                 STANDING_HEIGHT,
                 1,
                 0,

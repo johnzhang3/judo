@@ -23,6 +23,9 @@ RADIUS_MAX = 0.5
 USE_LEGS = False
 DEFAULT_GOAL = np.array([2.0, 4.5, 0.5])
 
+DEFAULT_SPOT_POS = np.array([-1.5, 0.0])
+DEFAULT_OBJECT_POS = np.array([0.0, 0.0])
+
 @dataclass
 class SpotYellowChairRampConfig(SpotBaseConfig):
     """Config for the spot box manipulation task."""
@@ -144,12 +147,14 @@ class SpotYellowChairRamp(SpotBase):
         """Reset pose of robot and object."""
         radius = RADIUS_MIN + (RADIUS_MAX - RADIUS_MIN) * np.random.rand()
         theta = 2 * np.pi * np.random.rand()
-        object_pos = np.array([radius * np.cos(theta), radius * np.cos(theta)]) + np.random.randn(2)
-        reset_object_pose = np.array([*object_pos, 0.254, 1, 0, 0, 0])
+        # object_pos = np.array([radius * np.cos(theta), radius * np.cos(theta)]) + np.random.randn(2)
+        object_pos = DEFAULT_OBJECT_POS + np.random.randn(2)*0.001
+        random_angle = 2 * np.pi * np.random.rand()
+        reset_object_pose = np.array([*object_pos, 0.254, np.cos(random_angle / 2), 0, 0, np.sin(random_angle / 2)])
 
         return np.array(
             [
-                *np.random.randn(2),
+                *DEFAULT_SPOT_POS + np.random.randn(2)*0.001,
                 STANDING_HEIGHT,
                 1,
                 0,
