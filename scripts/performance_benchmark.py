@@ -480,7 +480,7 @@ if __name__ == "__main__":
             # "leap_cube_down",
             # "walker",
             "spot_yellow_chair",
-            "spot_yellow_chair_ramp",
+            # "spot_yellow_chair_ramp",
         ],
         optimizer_names=None,
         num_episodes=10,
@@ -495,7 +495,7 @@ if __name__ == "__main__":
             # 60.0,  # leap_cube_down
             # 10.0,  # walker
             30.0,  # spot_yellow_chair
-            120.0,  # spot_yellow_chair_ramp
+            # 120.0,  # spot_yellow_chair_ramp
         ],
         viz_dt=0.02,
     )
