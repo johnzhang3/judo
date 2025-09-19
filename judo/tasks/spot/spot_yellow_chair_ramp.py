@@ -173,8 +173,8 @@ class SpotYellowChairRamp(SpotBase):
 
         # Top platform boundaries (calculated from ramp definition in ramp.xml)
         # Ramp body at (3.090, 5.412, 0) + platform at relative (1.215, 0.61, 0.125) with size (1.215, 0.61, 0.125)
-        platform_x_min, platform_x_max = 3.09, 5.52
-        platform_y_min, platform_y_max = 5.412, 6.632
+        platform_x_min, platform_x_max = 0.66, 3.09  # account for ramp being turned 180 degrees
+        platform_y_min, platform_y_max = 4.192, 5.412
         platform_z_min = 0.20  # Slightly below platform surface for tolerance
 
         # Check if chair is within the top platform area

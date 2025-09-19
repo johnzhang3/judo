@@ -285,7 +285,7 @@ def set_default_spot_yellow_chair_ramp_overrides() -> None:
         MPPIConfig,
         {
             "num_nodes": 4,
-            # "num_rollouts": 16,
+            "num_rollouts": 16,
         },
     )
     set_config_overrides(
@@ -293,6 +293,7 @@ def set_default_spot_yellow_chair_ramp_overrides() -> None:
         CMAESConfig,
         {
             "num_nodes": 4,
-            # "num_rollouts": 16,
+            "num_rollouts": 16,
+            "min_std": 0.2,
         },
     )
