@@ -11,6 +11,7 @@ class RolloutBackend:
 
     def __init__(self, num_threads: int, backend: Literal["mujoco"], task_to_sim_ctrl: Callable) -> None:
         self.backend = backend
+        # TODO: properly implement this
         if self.backend == "mujoco":
             self.rollout_func = rollout_spot
         else:
@@ -42,6 +43,13 @@ class RolloutBackend:
         states, sensors = self.rollout_func(ms, ds, x0_batched, controls)
         return np.array(states), np.array(sensors)
 
+    def update(self, num_threads: int) -> None:
+        """Update the backend with a new number of threads."""
+        if self.backend == "mujoco":
+            self.rollout_func = rollout_spot
+        else:
+            raise ValueError(f"Unknown backend: {self.backend}")
+
 
 class SimBackend:
     """Single-step sim using Spot ONNX policy for controls."""
@@ -53,6 +61,7 @@ class SimBackend:
     def sim(self, sim_model: MjModel, sim_data: MjData, sim_controls: np.ndarray) -> None:
         # processed_ctrl = self.task_to_sim_ctrl(sim_controls)
         x0 = np.concatenate([sim_data.qpos, sim_data.qvel])
+        # print(sim_data.qpos[26:29])
         controls = self.task_to_sim_ctrl(sim_controls)
         controls = controls.flatten()
         self.previous_policy_output = sim_spot(sim_model, sim_data, x0, controls, self.previous_policy_output)

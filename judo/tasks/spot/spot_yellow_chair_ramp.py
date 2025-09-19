@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from typing import Any
-
+from mujoco import MjModel, MjData
 import numpy as np
 
 from judo.utils.indexing import get_pos_indices, get_sensor_indices, get_vel_indices
@@ -21,7 +21,10 @@ RESET_OBJECT_POSE = np.array([3, 0, 0.275, 1, 0, 0, 0])
 RADIUS_MIN = 0.1
 RADIUS_MAX = 0.5
 USE_LEGS = False
-DEFAULT_GOAL = np.array([2.0, 4.5, 0.5])
+DEFAULT_GOAL = np.array([2.0, 4.5, 0.256])
+
+DEFAULT_SPOT_POS = np.array([-1.5, 0.0])
+DEFAULT_OBJECT_POS = np.array([0.0, 0.0])
 
 @dataclass
 class SpotYellowChairRampConfig(SpotBaseConfig):
@@ -39,6 +42,7 @@ class SpotYellowChairRampConfig(SpotBaseConfig):
     w_object_off_ramp: float = 1000.0
     w_object_centered: float = 15.0
     w_spot_off_ramp: float = 1000.0
+    position_tolerance: float = 0.005
 
 
 class SpotYellowChairRamp(SpotBase):
@@ -143,12 +147,14 @@ class SpotYellowChairRamp(SpotBase):
         """Reset pose of robot and object."""
         radius = RADIUS_MIN + (RADIUS_MAX - RADIUS_MIN) * np.random.rand()
         theta = 2 * np.pi * np.random.rand()
-        object_pos = np.array([radius * np.cos(theta), radius * np.cos(theta)]) + np.random.randn(2)
-        reset_object_pose = np.array([*object_pos, 0.254, 1, 0, 0, 0])
+        # object_pos = np.array([radius * np.cos(theta), radius * np.cos(theta)]) + np.random.randn(2)
+        object_pos = DEFAULT_OBJECT_POS + np.random.randn(2)*0.001
+        random_angle = 2 * np.pi * np.random.rand()
+        reset_object_pose = np.array([*object_pos, 0.254, np.cos(random_angle / 2), 0, 0, np.sin(random_angle / 2)])
 
         return np.array(
             [
-                *np.random.randn(2),
+                *DEFAULT_SPOT_POS + np.random.randn(2)*0.001,
                 STANDING_HEIGHT,
                 1,
                 0,
@@ -159,3 +165,21 @@ class SpotYellowChairRamp(SpotBase):
                 *reset_object_pose,
             ]
         )
+
+    def success(self, model: MjModel, data: MjData, config: SpotYellowChairRampConfig, metadata: dict[str, Any] | None = None) -> bool:
+        """Check if the yellow chair has reached the top platform area of the ramp."""
+        # Get object position
+        object_pos = data.qpos[self.object_pose_idx[0:3]]
+
+        # Top platform boundaries (calculated from ramp definition in ramp.xml)
+        # Ramp body at (3.090, 5.412, 0) + platform at relative (1.215, 0.61, 0.125) with size (1.215, 0.61, 0.125)
+        platform_x_min, platform_x_max = 3.09, 5.52
+        platform_y_min, platform_y_max = 5.412, 6.632
+        platform_z_min = 0.20  # Slightly below platform surface for tolerance
+
+        # Check if chair is within the top platform area
+        x_in_bounds = platform_x_min <= object_pos[0] <= platform_x_max
+        y_in_bounds = platform_y_min <= object_pos[1] <= platform_y_max
+        z_in_bounds = object_pos[2] >= platform_z_min
+
+        return bool(x_in_bounds and y_in_bounds and z_in_bounds)

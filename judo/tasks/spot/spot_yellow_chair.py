@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
-
+from mujoco import MjModel, MjData
 from judo.utils.indexing import get_pos_indices, get_sensor_indices, get_vel_indices
 from judo import MODEL_PATH
 from judo.tasks.spot.spot_constants import (
@@ -19,11 +19,14 @@ Z_AXIS = np.array([0.0, 0.0, 1.0])
 RESET_OBJECT_POSE = np.array([3, 0, 0.275, 1, 0, 0, 0])
 # annulus object position sampling
 RADIUS_MIN = 1.0
-RADIUS_MAX = 2.0
+RADIUS_MAX = 1.5
 USE_LEGS = False
 
 HARDWARE_FENCE_X = (-2.0, 3.0)
 HARDWARE_FENCE_Y = (-3.0, 2.5)
+
+DEFAULT_SPOT_POS = np.array([-1.5, 0.0])
+DEFAULT_OBJECT_POS = np.array([0.0, 0.0])
 
 @dataclass
 class SpotYellowChairConfig(SpotBaseConfig):
@@ -39,6 +42,8 @@ class SpotYellowChairConfig(SpotBaseConfig):
     orientation_threshold: float = 0.7
     w_controls: float = 2.0
     w_object_velocity: float = 64.0
+    position_tolerance: float = 0.2
+    orientation_tolerance: float = 0.1
 
 
 class SpotYellowChair(SpotBase[SpotYellowChairConfig]):
@@ -141,14 +146,17 @@ class SpotYellowChair(SpotBase[SpotYellowChairConfig]):
     @property
     def reset_pose(self) -> np.ndarray:
         """Reset pose of robot and object."""
-        radius = RADIUS_MIN + (RADIUS_MAX - RADIUS_MIN) * np.random.rand()
-        theta = 2 * np.pi * np.random.rand()
-        object_pos = np.array([radius * np.cos(theta), radius * np.cos(theta)]) + np.random.randn(2)
+        # radius = RADIUS_MIN + (RADIUS_MAX - RADIUS_MIN) * np.random.rand()
+        # theta = 2 * np.pi * np.random.rand()
+        # object_pos = np.array([radius * np.cos(theta), radius * np.cos(theta)]) + np.random.randn(2)
+        object_pos = DEFAULT_OBJECT_POS + np.random.randn(2)*0.001
         # reset_object_pose = np.array([*object_pos, 0.254, 1, 0, 0, 0])
-        reset_object_pose = np.array([*object_pos, 0.375, np.cos(np.pi / 4), -np.sin(np.pi / 4), 0, 0])
+        # random_angle = 2 * np.pi * np.random.rand()
+        reset_object_pose = np.array([*object_pos, 0.375, np.cos(np.pi / 4), -np.sin(np.pi / 4) , 0, 0 ])
+        spot_pos = DEFAULT_SPOT_POS + np.random.randn(2)*0.001
         return np.array(
             [
-                *np.random.randn(2),
+                *spot_pos,
                 STANDING_HEIGHT,
                 1,
                 0,
@@ -159,3 +167,14 @@ class SpotYellowChair(SpotBase[SpotYellowChairConfig]):
                 *reset_object_pose,
             ]
         )
+
+    def success(self, model: MjModel, data: MjData, config: SpotYellowChairConfig, metadata: dict[str, Any] | None = None) -> bool:
+        """Check if the yellow chair is upright, regardless of position."""
+        # Get object z-axis sensor data for orientation check
+        object_z_axis = data.sensordata[self.object_z_axis_idx]
+        
+        # Check orientation tolerance (object should be upright, z-axis aligned with world z-axis)
+        orientation_alignment = np.dot(object_z_axis, Z_AXIS)
+        orientation_success = orientation_alignment >= (1.0 - config.orientation_tolerance)
+        
+        return bool(orientation_success)

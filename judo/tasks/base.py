@@ -180,3 +180,83 @@ class Task(ABC, Generic[ConfigT]):
             joint_name: The name of the joint to get the starting index in the state array of.
         """
         return self.model.nq + self.model.jnt_dofadr[self.model.joint(joint_name).id]
+
+    def success(self, model: MjModel, data: MjData, config: ConfigT, metadata: dict[str, Any] | None = None) -> bool:
+        """If applicable, returns whether the task was successful at some given state (always False by default).
+
+        This is used by the performance benchmarker to determine whether to terminate an episode. Note that this should
+        be run on the simulated model and data, which should run in the highest fidelity, not the controller's copy.
+
+        Args:
+            model: The Mujoco model.
+            data: The Mujoco data.
+            config: The current task config (passed in from the top-level controller).
+            metadata: Any additional information that might be helpful for determining success.
+
+        Returns:
+            success: Whether the task was successful.
+        """
+        return False
+
+    def failure(self, model: MjModel, data: MjData, config: ConfigT, metadata: dict[str, Any] | None = None) -> bool:
+        """If applicable, returns whether the task has failed at some given state (always False by default).
+
+        This is used by the performance benchmarker to determine whether to terminate an episode. Note that this should
+        be run on the simulated model and data, which should run in the highest fidelity, not the controller's copy.
+
+        Args:
+            model: The Mujoco model.
+            data: The Mujoco data.
+            config: The current task config (passed in from the top-level controller).
+            metadata: Any additional information that might be helpful for determining failure.
+
+        Returns:
+            failure: Whether the task has failed.
+        """
+        return False
+
+    def compute_metrics(
+        self,
+        model: MjModel,
+        data: MjData,
+        config: ConfigT,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """If applicable, computes any non-reward-based metrics for the task (returns empty dict by default).
+
+        This is used by the performance benchmarker to report additional metrics at the end of an episode. This function
+        assumes that any metric values are computed per-step. Note that this should be run on the simulated model and
+        data, which should run in the highest fidelity, not the controller's copy.
+
+        Args:
+            model: The Mujoco model.
+            data: The Mujoco data.
+            config: The current task config (passed in from the top-level controller).
+            metadata: Any additional information that might be helpful for computing metrics.
+
+        Returns:
+            metrics: A dictionary that can hold anything, but should be a single element so it's stackable in a list
+                easily (e.g., a float, string, etc.)
+        """
+        return {}
+
+    def reduce_metrics(self, metric_dict: dict[str, list[Any]]) -> dict[str, Any]:
+        """If applicable, reduces a list of metrics to a single metric value (e.g., by averaging).
+
+        This is used by the performance benchmarker to report a single metric value at the end of an episode. This
+        function assumes that any metric values are computed per-step. By default, we take the mean of each metric if
+        possible, otherwise we take the last value.
+
+        Args:
+            metric_dict: A dictionary of lists of metrics, where each list contains the metric values for each step.
+
+        Returns:
+            reduced_metrics: A dictionary of reduced metrics.
+        """
+        reduced_metrics: dict[str, Any] = {}
+        for key, values in metric_dict.items():
+            try:
+                reduced_metrics[key] = float(np.mean(values))
+            except (TypeError, ValueError):
+                reduced_metrics[key] = values[-1]
+        return reduced_metrics
