@@ -75,13 +75,14 @@ class RolloutBackend:
         # rollout
         if self.backend == "mujoco":
             _states, _out_sensors = self.rollout_func(ms, ds, full_states, processed_controls)
+            out_states = np.array(_states)[..., 1:]  # remove time from state
+            out_sensors = np.array(_out_sensors)
+            return out_states, out_sensors
         elif self.backend == "mujoco_spot":
-            _states, _out_sensors = self.rollout_func(ms, ds, x0_batched, processed_controls)
+            out_states, out_sensors = self.rollout_func(ms, ds, x0_batched, processed_controls)
+            return np.array(out_states), np.array(out_sensors)
         else:
             raise ValueError(f"Unknown backend: {self.backend}")
-        out_states = np.array(_states)[..., 1:]  # remove time from state
-        out_sensors = np.array(_out_sensors)
-        return out_states, out_sensors
 
     def update(self, num_threads: int) -> None:
         """Update the backend with a new number of threads."""
