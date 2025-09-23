@@ -23,6 +23,8 @@ ConfigT = TypeVar("ConfigT", bound=TaskConfig)
 class Task(ABC, Generic[ConfigT]):
     """Task definition."""
 
+    default_backend = "mujoco"  # Default backend for all tasks
+
     def __init__(self, model_path: Path | str = "", sim_model_path: Path | str | None = None) -> None:
         """Initialize the Mujoco task."""
         if not model_path:
