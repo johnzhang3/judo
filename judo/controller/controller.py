@@ -34,6 +34,7 @@ class ControllerConfig(OverridableConfig):
     max_opt_iters: int = 1
     max_num_traces: int = 5
     action_normalizer: Literal["none", "min_max", "running"] = "none"
+    rollout_backend: Literal["mujoco", "mujoco_spot", "mujoco_cpp"] | None = None
 
 
 class Controller:
@@ -46,7 +47,7 @@ class Controller:
         task_config: TaskConfig,
         optimizer: Optimizer,
         optimizer_config: OptimizerConfig,
-        rollout_backend: Literal["mujoco"] = "mujoco",
+        rollout_backend: Literal["mujoco", "mujoco_spot", "mujoco_cpp"] | None = None,
     ) -> None:
         """Initialize the controller.
 
@@ -56,7 +57,7 @@ class Controller:
             task_config: The configuration for the task.
             optimizer: The optimizer object that will be used for optimization.
             optimizer_config: The configuration for the optimizer.
-            rollout_backend: The backend to use for rollouts. Currently only "mujoco" is supported.
+            rollout_backend: The backend to use for rollouts. If None, uses task's default or "mujoco".
         """
         self.controller_cfg = controller_config
 
@@ -69,8 +70,15 @@ class Controller:
         self.model = task.model
         self.model_data_pairs = make_model_data_pairs(self.model, self.optimizer_cfg.num_rollouts)
 
+        # Determine backend: config override > task default > "mujoco"
+        backend: Literal["mujoco", "mujoco_spot", "mujoco_cpp"] = (
+            controller_config.rollout_backend or
+            rollout_backend or
+            getattr(task, 'default_backend', 'mujoco')
+        )
+
         self.rollout_backend = task.RolloutBackend(
-            num_threads=self.optimizer_cfg.num_rollouts, backend=rollout_backend, task_to_sim_ctrl=task.task_to_sim_ctrl
+            num_threads=self.optimizer_cfg.num_rollouts, backend=backend, task_to_sim_ctrl=task.task_to_sim_ctrl
         )
 
         self.action_normalizer = self._init_action_normalizer()

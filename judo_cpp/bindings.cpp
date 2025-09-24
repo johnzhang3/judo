@@ -4,7 +4,7 @@
 #include <mujoco/mujoco.h>
 
 #include "rollout.h"
-#include "rollout_spot.h"
+#include "spot_rollout.h"
 
 namespace py = pybind11;
 
@@ -102,33 +102,7 @@ Returns:
     None
 )doc");
 
-    // Spot Rollout
-    m.def("rollout_spot",
-          [](const py::list& models,
-             const py::list& data,
-             const py::array_t<double>& x0,
-             const py::array_t<double>& controls)
-          {
-              auto models_cpp = getModelVector(models);
-              auto data_cpp   = getDataVector(data);
-              return RolloutSpot(models_cpp, data_cpp, x0, controls);
-          },
-          py::arg("models"),
-          py::arg("data"),
-          py::arg("x0"),
-          py::arg("controls"),
-          R"doc(
-Run parallel MuJoCo rollouts with Spot ONNX policy.
-
-Args:
-    models:   length-B list of mujoco._structs.MjModel
-    data:     length-B list of mujoco._structs.MjData
-    x0:       (B, nq+nv)
-    controls: (B, horizon, command_dim) commands passed to the policy each step
-
-Returns:
-    (states, sensors)
-)doc");
+    // Legacy rollout_spot function removed - use SpotRollout class instead
 
     // Spot Sim
     m.def("sim_spot",
@@ -160,4 +134,47 @@ Args:
 Returns:
     1D array of shape (12): New policy output for next iteration
 )doc");
+
+    // SpotRollout class - mimicking mujoco.rollout.Rollout API
+    py::class_<SpotRollout>(m, "SpotRollout")
+        .def(py::init<int>(), py::arg("nthread") = 0,
+             R"doc(
+Create a SpotRollout object with thread pool for parallel rollouts.
+
+Args:
+    nthread: Number of threads in pool. If 0, runs single-threaded.
+)doc")
+        .def("rollout",
+             [](SpotRollout& self,
+                const py::list& models,
+                const py::list& data,
+                const py::array_t<double>& initial_state,
+                const py::array_t<double>& controls)
+             {
+                 auto models_cpp = getModelVector(models);
+                 auto data_cpp = getDataVector(data);
+                 return self.rollout(models_cpp, data_cpp, initial_state, controls);
+             },
+             py::arg("models"),
+             py::arg("data"),
+             py::arg("initial_state"),
+             py::arg("controls"),
+             R"doc(
+Perform parallel rollouts with Spot ONNX policy.
+
+Args:
+    models: List of mujoco._structs.MjModel instances
+    data: List of mujoco._structs.MjData instances
+    initial_state: Array of shape (nbatch, nstate) with initial states
+    controls: Array of shape (nbatch, nsteps, 25) with command sequences
+
+Returns:
+    Tuple of (states, sensordata) arrays matching mujoco.rollout API
+)doc")
+        .def("close", &SpotRollout::close,
+             R"doc(Close the rollout object and cleanup resources.)doc")
+        .def("__enter__", &SpotRollout::__enter__, py::return_value_policy::reference_internal)
+        .def("__exit__", &SpotRollout::__exit__)
+        .def_property_readonly("nthread", &SpotRollout::get_num_threads,
+                              R"doc(Number of threads in the thread pool.)doc");
 }

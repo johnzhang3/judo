@@ -26,7 +26,7 @@ from judo.tasks.spot.spot_constants import (
 
 from judo import MODEL_PATH
 from judo.tasks.base import Task, TaskConfig
-from judo.utils.mujoco_spot import RolloutBackend, SimBackend
+from judo.utils.mujoco import RolloutBackend, SimBackendSpot
 XML_PATH = str(MODEL_PATH / "xml/spot_components/robot.xml")
 
 
@@ -65,6 +65,8 @@ class SpotBase(Task[ConfigT], Generic[ConfigT]):
     The mapping to the 25-dim policy command is done in task_to_sim_ctrl.
     """
 
+    default_backend = "mujoco_spot"  # Use Spot-specific backend
+
     def __init__(self, model_path: str=XML_PATH, use_arm: bool = True, use_gripper: bool = False, use_legs: bool = False) -> None:
         super().__init__(model_path)
         self.use_arm = use_arm
@@ -74,7 +76,7 @@ class SpotBase(Task[ConfigT], Generic[ConfigT]):
 
         # Use ONNX-based rollout backend
         self.RolloutBackend = RolloutBackend
-        self.SimBackend = SimBackend
+        self.SimBackend = SimBackendSpot
 
         self.default_policy_command = np.array(
             [0, 0, 0] + list(ARM_STOWED_POS) + [0] * 12 + [0, 0, STANDING_HEIGHT_CMD]
