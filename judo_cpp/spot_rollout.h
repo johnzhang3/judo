@@ -15,62 +15,48 @@
 
 namespace py = pybind11;
 
-// Forward declarations
+// Forward declaration
 class OnnxPolicy;
 
 /**
- * Template-based thread pool for compile-time optimization
- *
- * @tparam NumThreads Number of threads (0 = single-threaded, >0 = multi-threaded)
+ * Simple thread pool for parallel execution
  */
-template<int NumThreads = 0>
 class SpotThreadPool {
 public:
-    explicit SpotThreadPool();
+    explicit SpotThreadPool(int num_threads);
     ~SpotThreadPool();
 
     // Execute function across all threads
     void execute_parallel(std::function<void(int)> func, int total_work);
 
-    // Get effective thread count
-    constexpr int get_num_threads() const { return NumThreads; }
+    // Get thread count
+    int get_num_threads() const { return num_threads_; }
 
 private:
-    // Compile-time branch: single-threaded specialization
-    void execute_single_threaded(std::function<void(int)> func, int total_work);
+    int num_threads_;
+    std::vector<std::thread> threads_;
+    std::queue<std::function<void()>> tasks_;
+    std::mutex queue_mutex_;
+    std::condition_variable condition_;
+    std::condition_variable finished_;
+    std::atomic<bool> stop_;
+    std::atomic<int> active_workers_;
+    std::atomic<int> total_tasks_;
+    std::atomic<int> completed_tasks_;
 
-    // Compile-time branch: multi-threaded implementation
-    void execute_multi_threaded(std::function<void(int)> func, int total_work);
-
-    // Multi-threaded members (only instantiated when NumThreads > 0)
-    std::conditional_t<(NumThreads > 0), std::vector<std::thread>, std::nullptr_t> threads_;
-    std::conditional_t<(NumThreads > 0), std::queue<std::function<void()>>, std::nullptr_t> tasks_;
-    std::conditional_t<(NumThreads > 0), std::mutex, std::nullptr_t> queue_mutex_;
-    std::conditional_t<(NumThreads > 0), std::condition_variable, std::nullptr_t> condition_;
-    std::conditional_t<(NumThreads > 0), std::condition_variable, std::nullptr_t> finished_;
-    std::conditional_t<(NumThreads > 0), std::atomic<bool>, std::nullptr_t> stop_;
-    std::conditional_t<(NumThreads > 0), std::atomic<int>, std::nullptr_t> active_workers_;
-    std::conditional_t<(NumThreads > 0), std::atomic<int>, std::nullptr_t> total_tasks_;
-    std::conditional_t<(NumThreads > 0), std::atomic<int>, std::nullptr_t> completed_tasks_;
-
-    void worker_thread(); // Only used when NumThreads > 0
+    void worker_thread();
 };
 
 /**
  * Spot Rollout class mimicking mujoco.rollout.Rollout API
- *
- * Template parameters allow compile-time optimization of thread management:
- * - SpotRollout<0>: Single-threaded, no thread pool overhead
- * - SpotRollout<N>: N-threaded with optimized thread pool
  */
-template<int NumThreads = 0>
 class SpotRollout {
 public:
     /**
      * Constructor
-     * @param nthread Number of threads (ignored for template specialization, but kept for API compatibility)
+     * @param nthread Number of threads (0 = single-threaded, >0 = multi-threaded)
      */
-    explicit SpotRollout(int nthread = NumThreads);
+    explicit SpotRollout(int nthread = 0);
 
     /**
      * Destructor - cleans up resources
@@ -79,19 +65,12 @@ public:
 
     /**
      * Close the rollout object and cleanup resources
-     * Matches mujoco.rollout.Rollout.close() API
      */
     void close();
 
     /**
      * Perform rollout with Spot-specific ONNX policy
      * Matches mujoco.rollout.Rollout.rollout() API signature
-     *
-     * @param models Vector of MuJoCo models
-     * @param data Vector of MuJoCo data objects
-     * @param initial_state Initial state array (nbatch x nstate)
-     * @param controls Control commands array (nbatch x nsteps x 25)
-     * @return Tuple of (states, sensordata) arrays
      */
     py::tuple rollout(
         const std::vector<const mjModel*>& models,
@@ -101,22 +80,19 @@ public:
     );
 
     /**
-     * Context manager support - enter
+     * Context manager support
      */
-    SpotRollout<NumThreads>* __enter__();
-
-    /**
-     * Context manager support - exit
-     */
+    SpotRollout* __enter__();
     void __exit__(py::object exc_type, py::object exc_val, py::object exc_tb);
 
     /**
      * Get the number of threads
      */
-    constexpr int get_num_threads() const { return NumThreads; }
+    int get_num_threads() const;
 
 private:
-    SpotThreadPool<NumThreads> thread_pool_;
+    int num_threads_;
+    std::unique_ptr<SpotThreadPool> thread_pool_;
     std::shared_ptr<Ort::Session> onnx_session_;
     std::unique_ptr<OnnxPolicy> policy_;
     bool closed_ = false;
@@ -137,16 +113,6 @@ private:
     // Initialize ONNX session and policy
     void initialize_policy();
 };
-
-// Type aliases for common configurations
-using SpotRolloutST = SpotRollout<0>;          // Single-threaded
-using SpotRollout2T = SpotRollout<2>;          // 2 threads
-using SpotRollout4T = SpotRollout<4>;          // 4 threads
-using SpotRollout8T = SpotRollout<8>;          // 8 threads
-using SpotRolloutMT = SpotRollout<-1>;         // Dynamic thread count (hardware_concurrency)
-
-// Factory function to create rollout object with runtime thread count
-std::unique_ptr<py::object> create_spot_rollout(int nthread);
 
 // Utility function to create numpy arrays from C++ vectors
 py::array_t<double> make_array_owned(std::vector<double>& buf, int B, int T, int D);

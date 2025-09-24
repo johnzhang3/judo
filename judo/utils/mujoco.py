@@ -8,7 +8,7 @@ import numpy as np
 from mujoco import MjData, MjModel, mj_step
 from mujoco.rollout import Rollout
 
-from judo_cpp import rollout_spot, sim_spot, SpotRollout
+from judo_cpp import sim_spot, SpotRollout
 
 
 def make_model_data_pairs(model: MjModel, num_pairs: int) -> list[tuple[MjModel, MjData]]:

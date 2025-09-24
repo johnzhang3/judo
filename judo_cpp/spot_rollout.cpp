@@ -9,7 +9,7 @@
 
 namespace py = pybind11;
 
-// ONNX Policy wrapper class (moved from rollout_spot.cpp)
+// ONNX Policy wrapper class
 class OnnxPolicy {
 public:
     explicit OnnxPolicy(const std::shared_ptr<Ort::Session>& session)
@@ -55,7 +55,7 @@ private:
     int output_size_ = 0;
 };
 
-// Utility functions (moved from rollout_spot.cpp)
+// Utility functions
 py::array_t<double> make_array_owned(std::vector<double>& buf, int B, int T, int D) {
     std::vector<ssize_t> shape   = { B, T, D };
     std::vector<ssize_t> strides = {
@@ -106,27 +106,21 @@ static void mujoco_to_isaac_19(const double* mujoco, double* isaac) {
 }
 
 // =============================================================================
-// SpotThreadPool Template Implementation
+// SpotThreadPool Implementation
 // =============================================================================
 
-template<int NumThreads>
-SpotThreadPool<NumThreads>::SpotThreadPool() {
-    if constexpr (NumThreads > 0) {
-        stop_ = false;
-        active_workers_ = 0;
-        total_tasks_ = 0;
-        completed_tasks_ = 0;
-
-        threads_.reserve(NumThreads);
-        for (int i = 0; i < NumThreads; ++i) {
-            threads_.emplace_back(&SpotThreadPool<NumThreads>::worker_thread, this);
+SpotThreadPool::SpotThreadPool(int num_threads)
+    : num_threads_(num_threads), stop_(false), active_workers_(0), total_tasks_(0), completed_tasks_(0) {
+    if (num_threads_ > 0) {
+        threads_.reserve(num_threads_);
+        for (int i = 0; i < num_threads_; ++i) {
+            threads_.emplace_back(&SpotThreadPool::worker_thread, this);
         }
     }
 }
 
-template<int NumThreads>
-SpotThreadPool<NumThreads>::~SpotThreadPool() {
-    if constexpr (NumThreads > 0) {
+SpotThreadPool::~SpotThreadPool() {
+    if (num_threads_ > 0) {
         {
             std::unique_lock<std::mutex> lock(queue_mutex_);
             stop_ = true;
@@ -138,25 +132,14 @@ SpotThreadPool<NumThreads>::~SpotThreadPool() {
     }
 }
 
-template<int NumThreads>
-void SpotThreadPool<NumThreads>::execute_parallel(std::function<void(int)> func, int total_work) {
-    if constexpr (NumThreads == 0) {
-        execute_single_threaded(func, total_work);
+void SpotThreadPool::execute_parallel(std::function<void(int)> func, int total_work) {
+    if (num_threads_ == 0) {
+        // Single-threaded execution
+        for (int i = 0; i < total_work; ++i) {
+            func(i);
+        }
     } else {
-        execute_multi_threaded(func, total_work);
-    }
-}
-
-template<int NumThreads>
-void SpotThreadPool<NumThreads>::execute_single_threaded(std::function<void(int)> func, int total_work) {
-    for (int i = 0; i < total_work; ++i) {
-        func(i);
-    }
-}
-
-template<int NumThreads>
-void SpotThreadPool<NumThreads>::execute_multi_threaded(std::function<void(int)> func, int total_work) {
-    if constexpr (NumThreads > 0) {
+        // Multi-threaded execution
         {
             std::unique_lock<std::mutex> lock(queue_mutex_);
             total_tasks_ = total_work;
@@ -173,66 +156,62 @@ void SpotThreadPool<NumThreads>::execute_multi_threaded(std::function<void(int)>
     }
 }
 
-template<int NumThreads>
-void SpotThreadPool<NumThreads>::worker_thread() {
-    if constexpr (NumThreads > 0) {
-        for (;;) {
-            std::function<void()> task;
-            {
-                std::unique_lock<std::mutex> lock(queue_mutex_);
-                condition_.wait(lock, [this]() { return stop_ || !tasks_.empty(); });
+void SpotThreadPool::worker_thread() {
+    for (;;) {
+        std::function<void()> task;
+        {
+            std::unique_lock<std::mutex> lock(queue_mutex_);
+            condition_.wait(lock, [this]() { return stop_ || !tasks_.empty(); });
 
-                if (stop_ && tasks_.empty())
-                    return;
+            if (stop_ && tasks_.empty())
+                return;
 
-                task = std::move(tasks_.front());
-                tasks_.pop();
-            }
+            task = std::move(tasks_.front());
+            tasks_.pop();
+        }
 
-            task();
+        task();
 
-            {
-                std::unique_lock<std::mutex> lock(queue_mutex_);
-                completed_tasks_++;
-                if (completed_tasks_ == total_tasks_) {
-                    finished_.notify_one();
-                }
+        {
+            std::unique_lock<std::mutex> lock(queue_mutex_);
+            completed_tasks_++;
+            if (completed_tasks_ == total_tasks_) {
+                finished_.notify_one();
             }
         }
     }
 }
 
 // =============================================================================
-// SpotRollout Template Implementation
+// SpotRollout Implementation
 // =============================================================================
 
-template<int NumThreads>
-SpotRollout<NumThreads>::SpotRollout(int nthread) : thread_pool_() {
+SpotRollout::SpotRollout(int nthread) : num_threads_(nthread) {
     initialize_policy();
+    if (num_threads_ != 0) {
+        thread_pool_ = std::make_unique<SpotThreadPool>(num_threads_);
+    }
 }
 
-template<int NumThreads>
-SpotRollout<NumThreads>::~SpotRollout() {
+SpotRollout::~SpotRollout() {
     close();
 }
 
-template<int NumThreads>
-void SpotRollout<NumThreads>::close() {
+void SpotRollout::close() {
     if (!closed_) {
+        thread_pool_.reset();
         policy_.reset();
         onnx_session_.reset();
         closed_ = true;
     }
 }
 
-template<int NumThreads>
-void SpotRollout<NumThreads>::initialize_policy() {
+void SpotRollout::initialize_policy() {
     onnx_session_ = allocate_shared_session(get_policy_path());
     policy_ = std::make_unique<OnnxPolicy>(onnx_session_);
 }
 
-template<int NumThreads>
-py::tuple SpotRollout<NumThreads>::rollout(
+py::tuple SpotRollout::rollout(
     const std::vector<const mjModel*>& models,
     const std::vector<mjData*>& data,
     const py::array_t<double>& initial_state,
@@ -269,7 +248,8 @@ py::tuple SpotRollout<NumThreads>::rollout(
 
     {
         py::gil_scoped_release release;
-        thread_pool_.execute_parallel([&](int i) {
+
+        auto execute_work = [&](int i) {
             mjData* d = data[i];
             const mjModel* m = models[i];
 
@@ -315,7 +295,17 @@ py::tuple SpotRollout<NumThreads>::rollout(
                 for (int j = 0; j < nv; j++) st_ptr[(t + 1) * nstate + nq + j] = d->qvel[j];
                 for (int j = 0; j < nsens; j++) se_ptr[t * nsens + j] = d->sensordata[j];
             }
-        }, B);
+        };
+
+        if (num_threads_ == 0) {
+            // Single-threaded execution
+            for (int i = 0; i < B; ++i) {
+                execute_work(i);
+            }
+        } else {
+            // Multi-threaded execution
+            thread_pool_->execute_parallel(execute_work, B);
+        }
     }
 
     auto states_arr = make_array_owned(states_buf, B, horizon + 1, nstate);
@@ -323,20 +313,21 @@ py::tuple SpotRollout<NumThreads>::rollout(
     return py::make_tuple(states_arr, sens_arr);
 }
 
-template<int NumThreads>
-SpotRollout<NumThreads>* SpotRollout<NumThreads>::__enter__() {
+SpotRollout* SpotRollout::__enter__() {
     return this;
 }
 
-template<int NumThreads>
-void SpotRollout<NumThreads>::__exit__(py::object exc_type, py::object exc_val, py::object exc_tb) {
+void SpotRollout::__exit__(py::object exc_type, py::object exc_val, py::object exc_tb) {
     close();
 }
 
+int SpotRollout::get_num_threads() const {
+    return num_threads_;
+}
+
 // Helper method implementations
-template<int NumThreads>
-void SpotRollout<NumThreads>::compute_indices(const mjModel* m, int& base_qpos_start, int& base_qvel_start,
-                                              int& leg_qpos_start, int& leg_qvel_start) {
+void SpotRollout::compute_indices(const mjModel* m, int& base_qpos_start, int& base_qvel_start,
+                                  int& leg_qpos_start, int& leg_qvel_start) {
     int free_joint_idx = -1;
     for (int j = 0; j < m->njnt; j++) {
         if (m->jnt_type[j] == mjJNT_FREE) {
@@ -353,12 +344,11 @@ void SpotRollout<NumThreads>::compute_indices(const mjModel* m, int& base_qpos_s
     leg_qvel_start = base_qvel_start + 6;
 }
 
-template<int NumThreads>
-void SpotRollout<NumThreads>::build_observation(const mjModel* m, mjData* d, const double* command_ptr,
-                                               const std::vector<float>& prev_policy,
-                                               int base_qpos_start, int base_qvel_start,
-                                               int leg_qpos_start, int leg_qvel_start,
-                                               std::vector<float>& obs_out) {
+void SpotRollout::build_observation(const mjModel* m, mjData* d, const double* command_ptr,
+                                   const std::vector<float>& prev_policy,
+                                   int base_qpos_start, int base_qvel_start,
+                                   int leg_qpos_start, int leg_qvel_start,
+                                   std::vector<float>& obs_out) {
     obs_out.resize(84);
     int off = 0;
 
@@ -402,9 +392,8 @@ void SpotRollout<NumThreads>::build_observation(const mjModel* m, mjData* d, con
     for (int i = 0; i < 12; i++) obs_out[off++] = (i < (int)prev_policy.size() ? prev_policy[i] : 0.0f);
 }
 
-template<int NumThreads>
-void SpotRollout<NumThreads>::compute_control_from_policy(const float* policy_out, const double* command_ptr,
-                                                         std::vector<double>& ctrl_out) {
+void SpotRollout::compute_control_from_policy(const float* policy_out, const double* command_ptr,
+                                             std::vector<double>& ctrl_out) {
     ctrl_out.resize(19);
     double action_isaac[12];
     for (int i = 0; i < 12; i++) action_isaac[i] = static_cast<double>(policy_out[i]);
@@ -433,47 +422,158 @@ void SpotRollout<NumThreads>::compute_control_from_policy(const float* policy_ou
     }
 }
 
-// Factory function for runtime thread count selection
-std::unique_ptr<py::object> create_spot_rollout(int nthread) {
-    switch (nthread) {
-        case 0: return std::make_unique<py::cast_type<SpotRollout<0>>>(SpotRollout<0>(nthread));
-        case 1: return std::make_unique<py::cast_type<SpotRollout<1>>>(SpotRollout<1>(nthread));
-        case 2: return std::make_unique<py::cast_type<SpotRollout<2>>>(SpotRollout<2>(nthread));
-        case 4: return std::make_unique<py::cast_type<SpotRollout<4>>>(SpotRollout<4>(nthread));
-        case 8: return std::make_unique<py::cast_type<SpotRollout<8>>>(SpotRollout<8>(nthread));
-        default: {
-            // For arbitrary thread counts, use dynamic allocation
-            int hw_threads = std::thread::hardware_concurrency();
-            if (nthread <= hw_threads && nthread > 0) {
-                return std::make_unique<py::cast_type<SpotRollout<-1>>>(SpotRollout<-1>(nthread));
-            } else {
-                return std::make_unique<py::cast_type<SpotRollout<0>>>(SpotRollout<0>(nthread));
-            }
+// =============================================================================
+// SimSpot - Single-step simulation with Spot policy
+// =============================================================================
+
+py::array_t<float> SimSpot(
+    const mjModel* model,
+    mjData* data,
+    const py::array_t<double>& x0,
+    const py::array_t<double>& controls,
+    const py::array_t<float>& prev_policy
+) {
+    static std::shared_ptr<Ort::Session> onnx_session = nullptr;
+    static std::unique_ptr<OnnxPolicy> policy = nullptr;
+
+    // Initialize policy on first call
+    if (!onnx_session || !policy) {
+        onnx_session = allocate_shared_session(get_policy_path());
+        policy = std::make_unique<OnnxPolicy>(onnx_session);
+    }
+
+    int nq = model->nq;
+    int nv = model->nv;
+    int nu = model->nu;
+
+    if (x0.size() != nq + nv) {
+        throw std::runtime_error("x0 size must equal nq + nv");
+    }
+    if (controls.size() != 25) {
+        throw std::runtime_error("controls size must be 25");
+    }
+    if (prev_policy.size() != 12) {
+        throw std::runtime_error("prev_policy size must be 12");
+    }
+
+    // Set initial state
+    const double* x0_ptr = x0.data();
+    mj_setState(model, data, x0_ptr, mjSTATE_QPOS | mjSTATE_QVEL);
+    mj_forward(model, data);
+
+    // Convert prev_policy to vector
+    std::vector<float> prev_policy_vec(12);
+    const float* prev_policy_ptr = prev_policy.data();
+    for (int i = 0; i < 12; i++) {
+        prev_policy_vec[i] = prev_policy_ptr[i];
+    }
+
+    // Get command data
+    const double* cmd_ptr = controls.data();
+    double cmd_buf[25];
+    for (int i = 0; i < 25; i++) {
+        cmd_buf[i] = cmd_ptr[i];
+    }
+
+    // Compute indices
+    int base_qpos_start, base_qvel_start, leg_qpos_start, leg_qvel_start;
+    int free_joint_idx = -1;
+    for (int j = 0; j < model->njnt; j++) {
+        if (model->jnt_type[j] == mjJNT_FREE) {
+            free_joint_idx = j;
+            break;
         }
     }
-}
+    if (free_joint_idx == -1) {
+        free_joint_idx = 0;
+    }
+    base_qpos_start = model->jnt_qposadr[free_joint_idx];
+    base_qvel_start = model->jnt_dofadr[free_joint_idx];
+    leg_qpos_start = base_qpos_start + 7;
+    leg_qvel_start = base_qvel_start + 6;
 
-// Explicit template instantiations for commonly used configurations
-template class SpotThreadPool<0>;
-template class SpotThreadPool<1>;
-template class SpotThreadPool<2>;
-template class SpotThreadPool<4>;
-template class SpotThreadPool<8>;
+    // Build observation
+    std::vector<float> obs(84);
+    int off = 0;
 
-template class SpotRollout<0>;
-template class SpotRollout<1>;
-template class SpotRollout<2>;
-template class SpotRollout<4>;
-template class SpotRollout<8>;
+    double quat[4];
+    for (int i = 0; i < 4; i++) {
+        quat[i] = data->qpos[base_qpos_start + 3 + i];
+    }
 
-// Legacy function for backwards compatibility
-py::tuple RolloutSpot(
-    const std::vector<const mjModel*>& models,
-    const std::vector<mjData*>& data,
-    const py::array_t<double>& x0,
-    const py::array_t<double>& controls
-) {
-    // Use single-threaded rollout for legacy compatibility
-    SpotRollout<0> rollout(0);
-    return rollout.rollout(models, data, x0, controls);
+    double invq[4];
+    mju_negQuat(invq, quat);
+
+    double blin[3];
+    mju_rotVecQuat(blin, data->qvel + base_qvel_start, invq);
+    for (int i = 0; i < 3; i++) obs[off++] = static_cast<float>(blin[i]);
+
+    for (int i = 0; i < 3; i++) obs[off++] = static_cast<float>(data->qvel[base_qvel_start + 3 + i]);
+
+    double gvec[3] = {0.0, 0.0, -1.0};
+    double gvec_rotated[3];
+    mju_rotVecQuat(gvec_rotated, gvec, invq);
+    for (int i = 0; i < 3; i++) obs[off++] = static_cast<float>(gvec_rotated[i]);
+    for (int i = 0; i < 3; i++) obs[off++] = static_cast<float>(cmd_buf[0 + i]);
+    for (int i = 0; i < 7; i++) obs[off++] = static_cast<float>(cmd_buf[3 + i]);
+    for (int i = 0; i < 12; i++) obs[off++] = static_cast<float>(cmd_buf[10 + i]);
+    for (int i = 0; i < 3; i++) obs[off++] = static_cast<float>(cmd_buf[22 + i]);
+
+    double jpos_raw[19];
+    double jvel_raw[19];
+    for (int i = 0; i < 19; i++) {
+        jpos_raw[i] = data->qpos[leg_qpos_start + i] - STANDING_POS_RL[i];
+        jvel_raw[i] = data->qvel[leg_qvel_start + i];
+    }
+
+    double jpos_isaac[19];
+    double jvel_isaac[19];
+    mujoco_to_isaac_19(jpos_raw, jpos_isaac);
+    mujoco_to_isaac_19(jvel_raw, jvel_isaac);
+
+    for (int i = 0; i < 19; i++) obs[off++] = static_cast<float>(jpos_isaac[i]);
+    for (int i = 0; i < 19; i++) obs[off++] = static_cast<float>(jvel_isaac[i]);
+    for (int i = 0; i < 12; i++) obs[off++] = prev_policy_vec[i];
+
+    // Run policy
+    auto policy_out_vec = policy->run(obs);
+
+    // Compute control
+    std::vector<double> ctrl(19);
+    double action_isaac[12];
+    for (int i = 0; i < 12; i++) action_isaac[i] = static_cast<double>(policy_out_vec[i]);
+
+    double target_leg_isaac[12];
+    for (int i = 0; i < 12; i++) target_leg_isaac[i] = action_isaac[i] * ACTION_SCALE;
+
+    double target_leg_mj[12];
+    isaac_to_mujoco_12(target_leg_isaac, target_leg_mj);
+    for (int i = 0; i < 12; i++) target_leg_mj[i] += STANDING_POS_RL[i];
+
+    for (int i = 0; i < 12; i++) ctrl[i] = target_leg_mj[i];
+    for (int i = 0; i < 7; i++) ctrl[12 + i] = static_cast<double>(cmd_buf[3 + i]);
+
+    const double* leg_cmd = cmd_buf + 10;
+    auto has_nonzero = [](const double* v) { return v[0] != 0.0 || v[1] != 0.0 || v[2] != 0.0; };
+
+    if (has_nonzero(leg_cmd + 0)) {
+        for (int i = 0; i < 3; i++) ctrl[0 + i] = leg_cmd[0 + i];
+    } else if (has_nonzero(leg_cmd + 3)) {
+        for (int i = 0; i < 3; i++) ctrl[3 + i] = leg_cmd[3 + i];
+    } else if (has_nonzero(leg_cmd + 6)) {
+        for (int i = 0; i < 3; i++) ctrl[6 + i] = leg_cmd[6 + i];
+    } else if (has_nonzero(leg_cmd + 9)) {
+        for (int i = 0; i < 3; i++) ctrl[9 + i] = leg_cmd[9 + i];
+    }
+
+    // Apply control and step
+    for (int j = 0; j < nu; j++) data->ctrl[j] = ctrl[j];
+    mj_step(model, data);
+
+    // Return new policy output as numpy array
+    std::vector<ssize_t> shape = {12};
+    std::vector<ssize_t> strides = {sizeof(float)};
+    auto heap_buf = new std::vector<float>(std::move(policy_out_vec));
+    py::capsule free_when_done(heap_buf, [](void *p) { delete reinterpret_cast<std::vector<float>*>(p); });
+    return py::array_t<float>(shape, strides, heap_buf->data(), free_when_done);
 }

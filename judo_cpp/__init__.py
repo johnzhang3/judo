@@ -3,7 +3,6 @@
 from judo_cpp._judo_cpp import (
     rollout,
     sim,
-    rollout_spot,
     sim_spot,
     SpotRollout,
 )
@@ -11,7 +10,6 @@ from judo_cpp._judo_cpp import (
 __all__ = [
     "rollout",
     "sim",
-    "rollout_spot",
     "sim_spot",
     "SpotRollout",
 ]

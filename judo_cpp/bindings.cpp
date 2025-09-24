@@ -4,8 +4,7 @@
 #include <mujoco/mujoco.h>
 
 #include "rollout.h"
-#include "rollout_spot.h"
-#include "spot_rollout_simple.h"
+#include "spot_rollout.h"
 
 namespace py = pybind11;
 
@@ -103,33 +102,7 @@ Returns:
     None
 )doc");
 
-    // Spot Rollout
-    m.def("rollout_spot",
-          [](const py::list& models,
-             const py::list& data,
-             const py::array_t<double>& x0,
-             const py::array_t<double>& controls)
-          {
-              auto models_cpp = getModelVector(models);
-              auto data_cpp   = getDataVector(data);
-              return RolloutSpot(models_cpp, data_cpp, x0, controls);
-          },
-          py::arg("models"),
-          py::arg("data"),
-          py::arg("x0"),
-          py::arg("controls"),
-          R"doc(
-Run parallel MuJoCo rollouts with Spot ONNX policy.
-
-Args:
-    models:   length-B list of mujoco._structs.MjModel
-    data:     length-B list of mujoco._structs.MjData
-    x0:       (B, nq+nv)
-    controls: (B, horizon, command_dim) commands passed to the policy each step
-
-Returns:
-    (states, sensors)
-)doc");
+    // Legacy rollout_spot function removed - use SpotRollout class instead
 
     // Spot Sim
     m.def("sim_spot",
