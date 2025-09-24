@@ -43,6 +43,7 @@ pybind11_add_module(_judo_cpp
   bindings.cpp
   rollout.cpp
   rollout_spot.cpp
+  spot_rollout_simple.cpp
 )
 execute_process(
   COMMAND ${Python_EXECUTABLE} -c "import site; print(site.getsitepackages()[0])"
