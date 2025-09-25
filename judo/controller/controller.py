@@ -78,7 +78,7 @@ class Controller:
         )
 
         self.rollout_backend = task.RolloutBackend(
-            num_threads=self.optimizer_cfg.num_rollouts, backend=backend, task_to_sim_ctrl=task.task_to_sim_ctrl
+            num_threads=self.optimizer_cfg.num_rollouts, backend=backend, task_to_sim_ctrl=task.task_to_sim_ctrl, cutoff_time=self.optimizer_cfg.cutoff_time
         )
 
         self.action_normalizer = self._init_action_normalizer()
@@ -156,7 +156,12 @@ class Controller:
         # resizing any variables due to changes in the GUI
         if len(self.model_data_pairs) != self.optimizer_cfg.num_rollouts:
             self.model_data_pairs = make_model_data_pairs(self.model, self.optimizer_cfg.num_rollouts)
-            self.rollout_backend.update(self.optimizer_cfg.num_rollouts)
+            self.rollout_backend.update(self.optimizer_cfg.num_rollouts, cutoff_time=self.optimizer_cfg.cutoff_time)
+
+        # Update rollout backend when cutoff_time changes
+        if self.rollout_backend.cutoff_time != self.optimizer_cfg.cutoff_time:
+            self.rollout_backend.cutoff_time = self.optimizer_cfg.cutoff_time
+            self.rollout_backend.update(self.optimizer_cfg.num_rollouts, cutoff_time=self.optimizer_cfg.cutoff_time)
 
         normalizer_cls = normalizer_registry.get(self.action_normalizer_type)
         if normalizer_cls is None:

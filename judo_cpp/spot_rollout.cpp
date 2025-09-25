@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <unordered_map>
+#include <chrono>
 
 namespace py = pybind11;
 
@@ -186,7 +187,7 @@ void SpotThreadPool::worker_thread() {
 // SpotRollout Implementation
 // =============================================================================
 
-SpotRollout::SpotRollout(int nthread) : num_threads_(nthread) {
+SpotRollout::SpotRollout(int nthread, double cutoff_time) : num_threads_(nthread), cutoff_time_(cutoff_time) {
     initialize_policy();
     if (num_threads_ != 0) {
         thread_pool_ = std::make_unique<SpotThreadPool>(num_threads_);
@@ -250,6 +251,8 @@ py::tuple SpotRollout::rollout(
         py::gil_scoped_release release;
 
         auto execute_work = [&](int i) {
+            auto start_time = std::chrono::high_resolution_clock::now();
+
             mjData* d = data[i];
             const mjModel* m = models[i];
 
@@ -269,6 +272,19 @@ py::tuple SpotRollout::rollout(
             compute_indices(m, base_qpos_start, base_qvel_start, leg_qpos_start, leg_qvel_start);
 
             for (int t = 0; t < horizon; t++) {
+                // Check timeout before each step
+                auto current_time = std::chrono::high_resolution_clock::now();
+                auto elapsed = std::chrono::duration<double>(current_time - start_time).count();
+                if (elapsed > cutoff_time_) {
+                    // Timeout reached, fill remaining states with current state and return
+                    for (int remaining_t = t; remaining_t < horizon; remaining_t++) {
+                        for (int j = 0; j < nq; j++) st_ptr[(remaining_t + 1) * nstate + j] = d->qpos[j];
+                        for (int j = 0; j < nv; j++) st_ptr[(remaining_t + 1) * nstate + nq + j] = d->qvel[j];
+                        for (int j = 0; j < nsens; j++) se_ptr[remaining_t * nsens + j] = d->sensordata[j];
+                    }
+                    return;
+                }
+
                 std::vector<float> obs;
                 double cmd_buf[25];
                 for (int j = 0; j < 25; j++) {

@@ -18,7 +18,7 @@ from judo.tasks import Task, TaskConfig, get_registered_tasks
 # Define the Spot SimBackend from the provided code
 import onnxruntime
 from scipy.spatial.transform import Rotation as R
-from judo.utils.mujoco_spot import SimBackend
+from judo.utils.mujoco import SimBackendSpot
 from judo.tasks.spot.spot_base import SpotBase
 
 
@@ -195,7 +195,7 @@ def benchmark_single_task_and_optimizer(
     spot_sim_backend = None
     is_spot_task = hasattr(task, 'task_to_sim_ctrl')
     if is_spot_task:
-        spot_sim_backend = SimBackend(task_to_sim_ctrl=task.task_to_sim_ctrl)
+        spot_sim_backend = SimBackendSpot(task_to_sim_ctrl=task.task_to_sim_ctrl)
 
     # loop through episodes
     for i in range(num_episodes):

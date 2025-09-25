@@ -137,12 +137,13 @@ Returns:
 
     // SpotRollout class - mimicking mujoco.rollout.Rollout API
     py::class_<SpotRollout>(m, "SpotRollout")
-        .def(py::init<int>(), py::arg("nthread") = 0,
+        .def(py::init<int, double>(), py::arg("nthread") = 0, py::arg("cutoff_time") = 0.2,
              R"doc(
 Create a SpotRollout object with thread pool for parallel rollouts.
 
 Args:
     nthread: Number of threads in pool. If 0, runs single-threaded.
+    cutoff_time: Maximum time allowed per rollout in seconds (default 0.2s).
 )doc")
         .def("rollout",
              [](SpotRollout& self,

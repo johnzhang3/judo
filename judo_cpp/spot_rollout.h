@@ -55,8 +55,9 @@ public:
     /**
      * Constructor
      * @param nthread Number of threads (0 = single-threaded, >0 = multi-threaded)
+     * @param cutoff_time Maximum time allowed per rollout in seconds (default 0.2s)
      */
-    explicit SpotRollout(int nthread = 0);
+    explicit SpotRollout(int nthread = 0, double cutoff_time = 0.2);
 
     /**
      * Destructor - cleans up resources
@@ -92,6 +93,7 @@ public:
 
 private:
     int num_threads_;
+    double cutoff_time_;
     std::unique_ptr<SpotThreadPool> thread_pool_;
     std::shared_ptr<Ort::Session> onnx_session_;
     std::unique_ptr<OnnxPolicy> policy_;

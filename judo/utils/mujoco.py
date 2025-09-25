@@ -22,14 +22,15 @@ def make_model_data_pairs(model: MjModel, num_pairs: int) -> list[tuple[MjModel,
 class RolloutBackend:
     """The backend for conducting multithreaded rollouts."""
 
-    def __init__(self, num_threads: int, backend: Literal["mujoco", "mujoco_spot", "mujoco_cpp"], task_to_sim_ctrl: Callable) -> None:
+    def __init__(self, num_threads: int, backend: Literal["mujoco", "mujoco_spot", "mujoco_cpp"], task_to_sim_ctrl: Callable, cutoff_time: float = 0.2) -> None:
         """Initialize the backend with a number of threads."""
         self.backend = backend
         self.num_threads = num_threads
+        self.cutoff_time = cutoff_time
         if self.backend == "mujoco":
             self.setup_mujoco_backend(num_threads)
         elif self.backend == "mujoco_spot":
-            self.setup_mujoco_spot_backend(num_threads)
+            self.setup_mujoco_spot_backend(num_threads, cutoff_time)
         else:
             raise ValueError(f"Unknown backend: {self.backend}")
         self.task_to_sim_ctrl = task_to_sim_ctrl
@@ -42,9 +43,9 @@ class RolloutBackend:
         else:
             raise ValueError(f"Unknown backend: {self.backend}")
 
-    def setup_mujoco_spot_backend(self, num_threads: int) -> None:
+    def setup_mujoco_spot_backend(self, num_threads: int, cutoff_time: float) -> None:
         """Setup the mujoco_spot backend with SpotRollout object."""
-        self.rollout_obj = SpotRollout(nthread=num_threads)
+        self.rollout_obj = SpotRollout(nthread=num_threads, cutoff_time=cutoff_time)
         self.rollout_func = lambda m, d, x0, u: self.rollout_obj.rollout(m, d, x0, u)
     
     def rollout(
@@ -87,15 +88,17 @@ class RolloutBackend:
         else:
             raise ValueError(f"Unknown backend: {self.backend}")
 
-    def update(self, num_threads: int) -> None:
-        """Update the backend with a new number of threads."""
+    def update(self, num_threads: int, cutoff_time: float | None = None) -> None:
+        """Update the backend with a new number of threads and optionally cutoff time."""
         self.num_threads = num_threads
+        if cutoff_time is not None:
+            self.cutoff_time = cutoff_time
         if self.backend == "mujoco":
             self.rollout_obj.close()
             self.setup_mujoco_backend(num_threads)
         elif self.backend == "mujoco_spot":
             self.rollout_obj.close()
-            self.setup_mujoco_spot_backend(num_threads)
+            self.setup_mujoco_spot_backend(num_threads, self.cutoff_time)
         else:
             raise ValueError(f"Unknown backend: {self.backend}")
 
