@@ -1,3 +1,5 @@
+# Copyright (c) 2025 Robotics and AI Institute LLC. All rights reserved.
+
 # Copyright (c) 2024 Boston Dynamics AI Institute LLC. All rights reserved.
 
 from dataclasses import dataclass, field
@@ -5,13 +7,13 @@ from typing import Any
 
 import numpy as np
 
-from judo.utils.indexing import get_pos_indices, get_sensor_indices
 from judo import MODEL_PATH
+from judo.tasks.spot.spot_base import GOAL_POSITIONS, SpotBase, SpotBaseConfig
 from judo.tasks.spot.spot_constants import (
     LEGS_STANDING_POS,
     STANDING_HEIGHT,
 )
-from judo.tasks.spot.spot_base import GOAL_POSITIONS, SpotBase, SpotBaseConfig
+from judo.utils.indexing import get_pos_indices, get_sensor_indices
 
 XML_PATH = str(MODEL_PATH / "xml/spot_components/spot_box.xml")
 
@@ -21,6 +23,7 @@ RESET_OBJECT_POSE = np.array([3, 0, 0.275, 1, 0, 0, 0])
 RADIUS_MIN = 1.0
 RADIUS_MAX = 2.0
 USE_LEGS = False
+
 
 @dataclass
 class SpotBoxConfig(SpotBaseConfig):
@@ -37,13 +40,17 @@ class SpotBox(SpotBase):
     """Task getting Spot to move a box to a desired goal location."""
 
     def __init__(self, model_path: str = XML_PATH) -> None:
+        """Initialize Spot box task.
+
+        Args:
+            model_path: Path to the XML model file
+        """
         super().__init__(model_path=model_path, use_legs=USE_LEGS)
 
         self.body_pose_idx = get_pos_indices(self.model, "base")
         self.object_pose_idx = get_pos_indices(self.model, ["box_joint"])
         self.object_y_axis_idx = get_sensor_indices(self.model, "object_y_axis")
         self.end_effector_to_object_idx = get_sensor_indices(self.model, "sensor_arm_link_fngr")
-
 
     def reward(
         self,

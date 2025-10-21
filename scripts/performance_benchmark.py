@@ -1,3 +1,5 @@
+# Copyright (c) 2025 Robotics and AI Institute LLC. All rights reserved.
+
 import datetime
 from dataclasses import fields
 from fractions import Fraction
@@ -8,19 +10,15 @@ from typing import Any, Sequence
 
 import h5py
 import numpy as np
+
+# Define the Spot SimBackend from the provided code
 from mujoco import mj_step
 from tqdm import tqdm
 
 from judo.controller import Controller, ControllerConfig
 from judo.optimizers import Optimizer, OptimizerConfig, get_registered_optimizers
 from judo.tasks import Task, TaskConfig, get_registered_tasks
-
-# Define the Spot SimBackend from the provided code
-import onnxruntime
-from scipy.spatial.transform import Rotation as R
 from judo.utils.mujoco import SimBackendSpot
-from judo.tasks.spot.spot_base import SpotBase
-
 
 SPOT_BACKEND_AVAILABLE = True
 
@@ -193,7 +191,7 @@ def benchmark_single_task_and_optimizer(
 
     # Initialize Spot backend if needed
     spot_sim_backend = None
-    is_spot_task = hasattr(task, 'task_to_sim_ctrl')
+    is_spot_task = hasattr(task, "task_to_sim_ctrl")
     if is_spot_task:
         spot_sim_backend = SimBackendSpot(task_to_sim_ctrl=task.task_to_sim_ctrl)
 

@@ -11,7 +11,9 @@ from judo_cpp import rollout, sim
 class RolloutBackend:
     """The backend for conducting multithreaded rollouts."""
 
-    def __init__(self, num_threads: int, backend: Literal["mujoco", "mujoco_spot", "mujoco_cpp"], task_to_sim_ctrl: Callable) -> None:
+    def __init__(
+        self, num_threads: int, backend: Literal["mujoco", "mujoco_spot", "mujoco_cpp"], task_to_sim_ctrl: Callable
+    ) -> None:
         """Initialize the backend with a number of threads."""
         self.backend = backend
         if self.backend == "mujoco":

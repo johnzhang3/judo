@@ -1,17 +1,20 @@
+# Copyright (c) 2025 Robotics and AI Institute LLC. All rights reserved.
+
 # Copyright (c) 2024 Boston Dynamics AI Institute LLC. All rights reserved.
 
 from dataclasses import dataclass, field
 from typing import Any
-from mujoco import MjModel, MjData
-import numpy as np
 
-from judo.utils.indexing import get_pos_indices, get_sensor_indices, get_vel_indices
+import numpy as np
+from mujoco import MjData, MjModel
+
 from judo import MODEL_PATH
+from judo.tasks.spot.spot_base import SpotBase, SpotBaseConfig
 from judo.tasks.spot.spot_constants import (
     LEGS_STANDING_POS,
     STANDING_HEIGHT,
 )
-from judo.tasks.spot.spot_base import GOAL_POSITIONS, SpotBase, SpotBaseConfig
+from judo.utils.indexing import get_pos_indices, get_sensor_indices, get_vel_indices
 
 XML_PATH = str(MODEL_PATH / "xml/spot_components/spot_yellow_chair_ramp.xml")
 
@@ -25,6 +28,7 @@ DEFAULT_GOAL = np.array([2.0, 4.5, 0.256])
 
 DEFAULT_SPOT_POS = np.array([-1.5, 0.0])
 DEFAULT_OBJECT_POS = np.array([0.0, 0.0])
+
 
 @dataclass
 class SpotYellowChairRampConfig(SpotBaseConfig):
@@ -49,6 +53,11 @@ class SpotYellowChairRamp(SpotBase):
     """Task getting Spot to move a box to a desired goal location."""
 
     def __init__(self, model_path: str = XML_PATH) -> None:
+        """Initialize Spot yellow chair ramp task.
+
+        Args:
+            model_path: Path to the XML model file
+        """
         super().__init__(model_path=model_path, use_legs=USE_LEGS)
 
         self.body_pose_idx = get_pos_indices(self.model, "base")
@@ -145,16 +154,16 @@ class SpotYellowChairRamp(SpotBase):
     @property
     def reset_pose(self) -> np.ndarray:
         """Reset pose of robot and object."""
-        radius = RADIUS_MIN + (RADIUS_MAX - RADIUS_MIN) * np.random.rand()
-        theta = 2 * np.pi * np.random.rand()
+        RADIUS_MIN + (RADIUS_MAX - RADIUS_MIN) * np.random.rand()
+        2 * np.pi * np.random.rand()
         # object_pos = np.array([radius * np.cos(theta), radius * np.cos(theta)]) + np.random.randn(2)
-        object_pos = DEFAULT_OBJECT_POS + np.random.randn(2)*0.001
+        object_pos = DEFAULT_OBJECT_POS + np.random.randn(2) * 0.001
         random_angle = 2 * np.pi * np.random.rand()
         reset_object_pose = np.array([*object_pos, 0.254, np.cos(random_angle / 2), 0, 0, np.sin(random_angle / 2)])
 
         return np.array(
             [
-                *DEFAULT_SPOT_POS + np.random.randn(2)*0.001,
+                *DEFAULT_SPOT_POS + np.random.randn(2) * 0.001,
                 STANDING_HEIGHT,
                 1,
                 0,
@@ -166,7 +175,9 @@ class SpotYellowChairRamp(SpotBase):
             ]
         )
 
-    def success(self, model: MjModel, data: MjData, config: SpotYellowChairRampConfig, metadata: dict[str, Any] | None = None) -> bool:
+    def success(
+        self, model: MjModel, data: MjData, config: SpotYellowChairRampConfig, metadata: dict[str, Any] | None = None
+    ) -> bool:
         """Check if the yellow chair has reached the top platform area of the ramp."""
         # Get object position
         object_pos = data.qpos[self.object_pose_idx[0:3]]

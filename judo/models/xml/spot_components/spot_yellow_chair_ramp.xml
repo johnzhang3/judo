@@ -4,7 +4,7 @@
   <include file="assets.xml" />
   <include file="../objects/yellow_chair_defs.xml" />
   <include file="../objects/ramp.xml" />
-  
+
   <worldbody>
     <light directional="true" diffuse=".4 .4 .4" specular="0.1 0.1 0.1" pos="0 0 5" dir="0 0 -1" castshadow="false"/>
     <light directional="true" diffuse=".6 .6 .6" specular="0.2 0.2 0.2" pos="0 0 4" dir="0 0 -1"/>
@@ -20,7 +20,7 @@
       <include file="legs.xml" />
       <include file="arm.xml" />
     </body>
-    
+
     <include file="../objects/yellow_chair.xml" />
   </worldbody>
 

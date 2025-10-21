@@ -1,9 +1,13 @@
+# Copyright (c) 2025 Robotics and AI Institute LLC. All rights reserved.
+
 from dataclasses import dataclass, field
-from typing import Any, TypeVar, Generic
+from typing import Any, Generic, TypeVar
 
 import mujoco
 import numpy as np
-from mujoco import MjData, MjModel
+
+from judo import MODEL_PATH
+from judo.tasks.base import Task, TaskConfig
 from judo.tasks.spot.spot_constants import (
     ARM_CMD_INDS,
     ARM_SOFT_LOWER_JOINT_LIMITS,
@@ -12,26 +16,22 @@ from judo.tasks.spot.spot_constants import (
     ARM_UNSTOWED_POS,
     BASE_SOFT_LIMITS,
     BASE_VEL_CMD_INDS,
-    DEFAULT_SPOT_ROLLOUT_CUTOFF_TIME,
     FRONT_LEG_CMD_INDS,
     GRIPPER_CLOSED_POS,
     GRIPPER_OPEN_POS,
-    JOINT_NAMES_BOSDYN,
     LEG_SOFT_LOWER_JOINT_LIMITS,
     LEG_SOFT_UPPER_JOINT_LIMITS,
     LEGS_STANDING_POS,
+    STANDING_HEIGHT,
     STANDING_HEIGHT_CMD,
-    STANDING_HEIGHT
 )
-
-from judo import MODEL_PATH
-from judo.tasks.base import Task, TaskConfig
 from judo.utils.mujoco import RolloutBackend, SimBackendSpot
+
 XML_PATH = str(MODEL_PATH / "xml/spot_components/robot.xml")
 
 
 @dataclass
-class GOAL_POSITIONS:
+class GOAL_POSITIONS:  # noqa: N801
     """Goal positions of Spot."""
 
     origin: np.ndarray = field(default_factory=lambda: np.array([0, 0, 0.0]))
@@ -67,7 +67,17 @@ class SpotBase(Task[ConfigT], Generic[ConfigT]):
 
     default_backend = "mujoco_spot"  # Use Spot-specific backend
 
-    def __init__(self, model_path: str=XML_PATH, use_arm: bool = True, use_gripper: bool = False, use_legs: bool = False) -> None:
+    def __init__(
+        self, model_path: str = XML_PATH, use_arm: bool = True, use_gripper: bool = False, use_legs: bool = False
+    ) -> None:
+        """Initialize Spot base task.
+
+        Args:
+            model_path: Path to the XML model file
+            use_arm: Whether to use the arm
+            use_gripper: Whether to use the gripper
+            use_legs: Whether to use the legs
+        """
         super().__init__(model_path)
         self.use_arm = use_arm
         self.use_gripper = use_gripper  # Reserved flag; not used in current mapping
@@ -183,7 +193,7 @@ class SpotBase(Task[ConfigT], Generic[ConfigT]):
             controls = controls[None]
             added_dim = True
 
-        B, T = controls.shape[0], controls.shape[1] if controls.ndim == 3 else 1
+        _B, T = controls.shape[0], controls.shape[1] if controls.ndim == 3 else 1
         if controls.ndim == 2:
             # assume (..., nu) at sim timestep grid
             controls = controls[:, None, :]
@@ -242,13 +252,12 @@ class SpotBase(Task[ConfigT], Generic[ConfigT]):
 
     @property
     def reset_arm_pos(self) -> np.ndarray:
-        """Reset position of the arm"""
+        """Reset position of the arm."""
         return ARM_UNSTOWED_POS if self.use_arm else ARM_STOWED_POS
 
     @property
     def reset_pose(self) -> np.ndarray:
         """Reset pose of robot and object."""
-
         return np.array(
             [
                 *np.random.randn(2),
@@ -263,8 +272,7 @@ class SpotBase(Task[ConfigT], Generic[ConfigT]):
         )
 
     def reset(self) -> None:
+        """Reset the robot to its initial pose."""
         self.data.qpos = self.reset_pose
         self.data.qvel = np.zeros_like(self.data.qvel)
         mujoco.mj_forward(self.model, self.data)
-
-

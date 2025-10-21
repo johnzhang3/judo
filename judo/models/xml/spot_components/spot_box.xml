@@ -14,7 +14,7 @@
       <include file="legs.xml" />
       <include file="arm.xml" />
     </body>
-    
+
     <include file="../objects/box.xml" />
   </worldbody>
 

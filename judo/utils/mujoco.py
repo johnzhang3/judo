@@ -8,7 +8,7 @@ import numpy as np
 from mujoco import MjData, MjModel, mj_step
 from mujoco.rollout import Rollout
 
-from judo_cpp import sim_spot, SpotRollout
+from judo_cpp import SpotRollout, sim_spot
 
 
 def make_model_data_pairs(model: MjModel, num_pairs: int) -> list[tuple[MjModel, MjData]]:
@@ -22,7 +22,13 @@ def make_model_data_pairs(model: MjModel, num_pairs: int) -> list[tuple[MjModel,
 class RolloutBackend:
     """The backend for conducting multithreaded rollouts."""
 
-    def __init__(self, num_threads: int, backend: Literal["mujoco", "mujoco_spot", "mujoco_cpp"], task_to_sim_ctrl: Callable, cutoff_time: float = 0.2) -> None:
+    def __init__(
+        self,
+        num_threads: int,
+        backend: Literal["mujoco", "mujoco_spot", "mujoco_cpp"],
+        task_to_sim_ctrl: Callable,
+        cutoff_time: float = 0.2,
+    ) -> None:
         """Initialize the backend with a number of threads."""
         self.backend = backend
         self.num_threads = num_threads
@@ -47,7 +53,7 @@ class RolloutBackend:
         """Setup the mujoco_spot backend with SpotRollout object."""
         self.rollout_obj = SpotRollout(nthread=num_threads, cutoff_time=cutoff_time)
         self.rollout_func = lambda m, d, x0, u: self.rollout_obj.rollout(m, d, x0, u)
-    
+
     def rollout(
         self,
         model_data_pairs: list[tuple[MjModel, MjData]],
@@ -63,7 +69,6 @@ class RolloutBackend:
         # getting shapes
         nq = ms[0].nq
         nv = ms[0].nv
-        nu = ms[0].nu
 
         # the state passed into mujoco's rollout function includes the time
         # shape = (num_rollouts, num_states + 1)
@@ -102,6 +107,7 @@ class RolloutBackend:
         else:
             raise ValueError(f"Unknown backend: {self.backend}")
 
+
 class SimBackend:
     """The backend for conducting simulation."""
 
@@ -114,8 +120,16 @@ class SimBackend:
         sim_data.ctrl[:] = self.task_to_sim_ctrl(sim_controls)
         mj_step(sim_model, sim_data)
 
+
 class SimBackendSpot:
+    """Simulation backend for Spot robot using ONNX policy."""
+
     def __init__(self, task_to_sim_ctrl: Callable) -> None:
+        """Initialize Spot simulation backend.
+
+        Args:
+            task_to_sim_ctrl: Function to convert task controls to sim controls
+        """
         self.task_to_sim_ctrl = task_to_sim_ctrl
         self.previous_policy_output = np.zeros((12))
 
@@ -125,5 +139,3 @@ class SimBackendSpot:
         controls = self.task_to_sim_ctrl(sim_controls)
         controls = controls.flatten()
         self.previous_policy_output = sim_spot(sim_model, sim_data, x0, controls, self.previous_policy_output)
-
-

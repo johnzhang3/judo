@@ -2,8 +2,8 @@
 
 from judo.config import set_config_overrides
 from judo.optimizers.cem import CrossEntropyMethodConfig
-from judo.optimizers.mppi import MPPIConfig
 from judo.optimizers.cmaes import CMAESConfig
+from judo.optimizers.mppi import MPPIConfig
 from judo.optimizers.ps import PredictiveSamplingConfig
 
 
@@ -260,6 +260,7 @@ def set_default_spot_yellow_chair_overrides() -> None:
             # "num_rollouts": 16,
         },
     )
+
 
 def set_default_spot_yellow_chair_ramp_overrides() -> None:
     """Sets the default task-specific optimizer config overrides for the spot yellow chair task."""

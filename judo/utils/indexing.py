@@ -1,3 +1,5 @@
+# Copyright (c) 2025 Robotics and AI Institute LLC. All rights reserved.
+
 # Copyright (c) 2025 Boston Dynamics AI Institute LLC. All rights reserved.
 
 from typing import Tuple

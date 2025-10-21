@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from typing import Any
 
 import mujoco
-from mujoco import MjModel, MjData
 import numpy as np
+from mujoco import MjData, MjModel
 
 from judo import MODEL_PATH
 from judo.tasks.base import Task, TaskConfig

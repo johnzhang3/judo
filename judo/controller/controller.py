@@ -72,13 +72,14 @@ class Controller:
 
         # Determine backend: config override > task default > "mujoco"
         backend: Literal["mujoco", "mujoco_spot", "mujoco_cpp"] = (
-            controller_config.rollout_backend or
-            rollout_backend or
-            getattr(task, 'default_backend', 'mujoco')
+            controller_config.rollout_backend or rollout_backend or getattr(task, "default_backend", "mujoco")
         )
 
         self.rollout_backend = task.RolloutBackend(
-            num_threads=self.optimizer_cfg.num_rollouts, backend=backend, task_to_sim_ctrl=task.task_to_sim_ctrl, cutoff_time=self.optimizer_cfg.cutoff_time
+            num_threads=self.optimizer_cfg.num_rollouts,
+            backend=backend,
+            task_to_sim_ctrl=task.task_to_sim_ctrl,
+            cutoff_time=self.optimizer_cfg.cutoff_time,
         )
 
         self.action_normalizer = self._init_action_normalizer()
