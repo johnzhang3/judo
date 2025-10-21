@@ -6,7 +6,6 @@ import warnings
 
 from dora_utils.dataclasses import from_arrow, to_arrow
 from dora_utils.node import DoraNode, on_event
-from mujoco import mj_step
 from omegaconf import DictConfig
 
 from judo.app.structs import MujocoState, SplineData
@@ -50,6 +49,7 @@ class SimulationNode(DoraNode):
 
         self.task: Task = task_cls()
         self.task_config = task_config_cls()
+        self.sim_backend = self.task.SimBackend(task_to_sim_ctrl=self.task.task_to_sim_ctrl)
         self.task.reset()
 
     @on_event("INPUT", "task")
@@ -62,9 +62,9 @@ class SimulationNode(DoraNode):
         """Step the simulation forward by one timestep."""
         if self.control is not None and not self.paused:
             try:
-                self.task.data.ctrl[:] = self.control(self.task.data.time)
+                self.sim_controls = self.control(self.task.data.time)
                 self.task.pre_sim_step()
-                mj_step(self.task.sim_model, self.task.data)
+                self.sim_backend.sim(self.task.sim_model, self.task.data, self.sim_controls)
                 self.task.post_sim_step()
             except ValueError:
                 # we're switching tasks and the new task has a different number of actuators
