@@ -2,14 +2,20 @@
 
 import time
 from copy import deepcopy
-from typing import TYPE_CHECKING, Callable, Literal
+from typing import TYPE_CHECKING, Any, Callable, Literal
 
 import numpy as np
 from mujoco import MjData, MjModel, mj_step
 from mujoco.rollout import Rollout
 
 if TYPE_CHECKING:
-    from judo_cpp import SpotRollout, sim_spot
+    # Type stubs for type checking - these don't actually import the module
+    class SpotRollout:  # noqa: D101
+        def __init__(self, nthread: int, cutoff_time: float) -> None: ...  # noqa: D107
+        def rollout(self, model: MjModel, data: MjData, x0: Any, controls: Any) -> Any: ...  # noqa: D102
+        def close(self) -> None: ...  # noqa: D102
+
+    def sim_spot(model: MjModel, data: MjData, x0: Any, controls: Any, prev_output: Any) -> Any: ...  # noqa: D103
 else:
     try:
         from judo_cpp import SpotRollout, sim_spot

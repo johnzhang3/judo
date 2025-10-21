@@ -1,12 +1,15 @@
 # Copyright (c) 2025 Robotics and AI Institute LLC. All rights reserved.
 
-from typing import TYPE_CHECKING, Callable, Literal
+from typing import TYPE_CHECKING, Any, Callable, Literal
 
 import numpy as np
 from mujoco import MjData, MjModel
 
 if TYPE_CHECKING:
-    from judo_cpp import rollout, sim
+    # Type stubs for type checking - these don't actually import the module
+    def rollout(model: Any, data: Any, x0: Any, controls: Any) -> Any: ...  # noqa: D103
+
+    def sim(model: MjModel, data: MjData, x0: Any, controls: Any) -> None: ...  # noqa: D103
 else:
     try:
         from judo_cpp import rollout, sim
