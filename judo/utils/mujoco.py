@@ -14,8 +14,13 @@ else:
     try:
         from judo_cpp import SpotRollout, sim_spot
     except ImportError:
-        SpotRollout = None  # type: ignore[assignment, misc]
-        sim_spot = None  # type: ignore[assignment, misc]
+        # Create dummy classes/functions for when C++ extensions aren't available
+        class SpotRollout:  # type: ignore[no-redef]  # noqa: D101
+            def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]  # noqa: ANN002, ANN003, D107
+                raise ImportError("judo_cpp module is not available. Please build the C++ extensions.")
+
+        def sim_spot(*args, **kwargs):  # type: ignore[no-untyped-def, misc]  # noqa: ANN002, ANN003, ANN201, D103
+            raise ImportError("judo_cpp module is not available. Please build the C++ extensions.")
 
 
 def make_model_data_pairs(model: MjModel, num_pairs: int) -> list[tuple[MjModel, MjData]]:

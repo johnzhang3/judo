@@ -11,8 +11,12 @@ else:
     try:
         from judo_cpp import rollout, sim
     except ImportError:
-        rollout = None  # type: ignore[assignment, misc]
-        sim = None  # type: ignore[assignment, misc]
+        # Create dummy functions for when C++ extensions aren't available
+        def rollout(*args, **kwargs):  # type: ignore[no-untyped-def, misc]  # noqa: ANN002, ANN003, ANN201, D103
+            raise ImportError("judo_cpp module is not available. Please build the C++ extensions.")
+
+        def sim(*args, **kwargs):  # type: ignore[no-untyped-def, misc]  # noqa: ANN002, ANN003, ANN201, D103
+            raise ImportError("judo_cpp module is not available. Please build the C++ extensions.")
 
 
 class RolloutBackend:
