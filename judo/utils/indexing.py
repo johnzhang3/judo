@@ -52,7 +52,7 @@ def get_control_indices(model: mujoco.MjModel, joint_name: str | list[str]) -> n
     if isinstance(joint_name, list):
         return np.concatenate([get_control_indices(model, name) for name in joint_name])
     elif isinstance(joint_name, str):
-        joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
+        joint_id = mujoco.mj_name2id(model, int(mujoco.mjtObj.mjOBJ_JOINT), joint_name)
         if joint_id == -1:
             raise ValueError(f"Could not find joint named '{joint_name}' in model")
 
@@ -81,7 +81,7 @@ def get_vel_indices(model: mujoco.MjModel, joint_name: str | list[str]) -> np.nd
     if isinstance(joint_name, list):
         return np.concatenate([get_vel_indices(model, name) for name in joint_name])
     elif isinstance(joint_name, str):
-        joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
+        joint_id = mujoco.mj_name2id(model, int(mujoco.mjtObj.mjOBJ_JOINT), joint_name)
         if joint_id == -1:
             raise ValueError(f"Could not find joint named '{joint_name}' in model")
 
@@ -113,7 +113,7 @@ def get_pos_indices(model: mujoco.MjModel, joint_name: str | list[str]) -> np.nd
     if isinstance(joint_name, list):
         return np.concatenate([get_pos_indices(model, name) for name in joint_name])
     elif isinstance(joint_name, str):
-        joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
+        joint_id = mujoco.mj_name2id(model, int(mujoco.mjtObj.mjOBJ_JOINT), joint_name)
         if joint_id == -1:
             print(model.names)
             raise ValueError(f"Could not find joint named '{joint_name}' in model.")
@@ -166,7 +166,7 @@ def get_sensor_indices(model: mujoco.MjModel, sensor_name: str | list[str]) -> n
     if isinstance(sensor_name, list):
         return np.concatenate([get_sensor_indices(model, name) for name in sensor_name])
     elif isinstance(sensor_name, str):
-        sensor_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SENSOR, sensor_name)
+        sensor_id = mujoco.mj_name2id(model, int(mujoco.mjtObj.mjOBJ_SENSOR), sensor_name)
         if sensor_id == -1:
             raise ValueError(f"Could not find sensor named '{sensor_name}' in model")
 
@@ -192,7 +192,7 @@ def get_control_range(model: mujoco.MjModel, joint_name: str | list[str]) -> np.
     if isinstance(joint_name, list):
         return np.array([get_control_range(model, name) for name in joint_name])
     elif isinstance(joint_name, str):
-        joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
+        joint_id = mujoco.mj_name2id(model, int(mujoco.mjtObj.mjOBJ_JOINT), joint_name)
         if joint_id == -1:
             raise ValueError(f"Joint '{joint_name}' not found in the model.")
 
@@ -215,7 +215,7 @@ def get_joint_names(model: mujoco.MjModel) -> list[str]:
     Returns:
         List of joint names
     """
-    return [mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) for i in range(model.njnt)]
+    return [mujoco.mj_id2name(model, int(mujoco.mjtObj.mjOBJ_JOINT), i) for i in range(model.njnt)]
 
 
 def get_joint_type(model: mujoco.MjModel, joint_name: str) -> mujoco.mjtJoint:
@@ -228,7 +228,7 @@ def get_joint_type(model: mujoco.MjModel, joint_name: str) -> mujoco.mjtJoint:
     Returns:
         Type of the joint
     """
-    return model.jnt_type[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)]
+    return model.jnt_type[mujoco.mj_name2id(model, int(mujoco.mjtObj.mjOBJ_JOINT), joint_name)]
 
 
 def get_joint_pos_index_map(model: mujoco.MjModel) -> dict[str, list[int]]:

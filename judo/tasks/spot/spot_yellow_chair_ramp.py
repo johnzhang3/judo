@@ -154,8 +154,6 @@ class SpotYellowChairRamp(SpotBase):
     @property
     def reset_pose(self) -> np.ndarray:
         """Reset pose of robot and object."""
-        RADIUS_MIN + (RADIUS_MAX - RADIUS_MIN) * np.random.rand()
-        2 * np.pi * np.random.rand()
         # object_pos = np.array([radius * np.cos(theta), radius * np.cos(theta)]) + np.random.randn(2)
         object_pos = DEFAULT_OBJECT_POS + np.random.randn(2) * 0.001
         random_angle = 2 * np.pi * np.random.rand()
