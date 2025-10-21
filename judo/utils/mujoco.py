@@ -2,13 +2,20 @@
 
 import time
 from copy import deepcopy
-from typing import Callable, Literal
+from typing import TYPE_CHECKING, Callable, Literal
 
 import numpy as np
 from mujoco import MjData, MjModel, mj_step
 from mujoco.rollout import Rollout
 
-from judo_cpp import SpotRollout, sim_spot
+if TYPE_CHECKING:
+    from judo_cpp import SpotRollout, sim_spot
+else:
+    try:
+        from judo_cpp import SpotRollout, sim_spot
+    except ImportError:
+        SpotRollout = None  # type: ignore[assignment, misc]
+        sim_spot = None  # type: ignore[assignment, misc]
 
 
 def make_model_data_pairs(model: MjModel, num_pairs: int) -> list[tuple[MjModel, MjData]]:

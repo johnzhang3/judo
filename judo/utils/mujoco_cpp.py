@@ -1,11 +1,18 @@
 # Copyright (c) 2025 Robotics and AI Institute LLC. All rights reserved.
 
-from typing import Callable, Literal
+from typing import TYPE_CHECKING, Callable, Literal
 
 import numpy as np
 from mujoco import MjData, MjModel
 
-from judo_cpp import rollout, sim
+if TYPE_CHECKING:
+    from judo_cpp import rollout, sim
+else:
+    try:
+        from judo_cpp import rollout, sim
+    except ImportError:
+        rollout = None  # type: ignore[assignment, misc]
+        sim = None  # type: ignore[assignment, misc]
 
 
 class RolloutBackend:
