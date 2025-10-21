@@ -1,10 +1,4 @@
-# task: cylinder_push
-# task: spot_base
-# task: spot_box
-# task: spot_yellow_chair
-task: spot_yellow_chair_ramp
-# task: spot_door_box
-# task: fr3_ball
+task: cylinder_push
 optimizer: cem
 
 dataflow:
