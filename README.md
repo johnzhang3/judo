@@ -74,7 +74,7 @@ judo
 
 To start with a specific config file
 ```bash
-pixi run -e dev judo --config-name test_policy_backend
+pixi run -e dev judo --config-name judo_default
 ```
 
 This will start the stack and print a link in the terminal that will open the app in your browser, e.g.,
