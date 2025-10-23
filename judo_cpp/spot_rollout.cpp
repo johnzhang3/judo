@@ -79,7 +79,7 @@ static std::shared_ptr<Ort::Session> allocate_shared_session(const std::string& 
 }
 
 static std::string get_policy_path() {
-    return std::string("judo_cpp/policy/xinghao_policy_v1.onnx");
+    return std::string("judo_cpp/policy/spot_relic_policy.onnx");
 }
 
 // Constants and helper functions (from rollout_spot.cpp)

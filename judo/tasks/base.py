@@ -198,7 +198,7 @@ class Task(ABC, Generic[ConfigT]):
         Returns:
             success: Whether the task was successful.
         """
-        return False
+        raise NotImplementedError("The success criteria needs to be implemented by the child task.")
 
     def failure(self, model: MjModel, data: MjData, config: ConfigT, metadata: dict[str, Any] | None = None) -> bool:
         """If applicable, returns whether the task has failed at some given state (always False by default).
@@ -215,7 +215,7 @@ class Task(ABC, Generic[ConfigT]):
         Returns:
             failure: Whether the task has failed.
         """
-        return False
+        raise NotImplementedError("The episode failure criteria needs to be implemented by the child task.")
 
     def compute_metrics(
         self,

@@ -96,7 +96,6 @@ class RolloutBackend:
         assert full_states.shape[-1] == nq + nv + 1
         assert full_states.ndim == 2
         assert processed_controls.ndim == 3
-        # assert processed_controls.shape[-1] == nu
         assert processed_controls.shape[0] == full_states.shape[0]
 
         # rollout

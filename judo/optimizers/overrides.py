@@ -231,9 +231,7 @@ def set_default_spot_yellow_chair_overrides() -> None:
         "spot_yellow_chair",
         PredictiveSamplingConfig,
         {
-            # "num_nodes": 4,
             "num_rollouts": 16,
-            # "use_noise_ramp": False,
         },
     )
     set_config_overrides(

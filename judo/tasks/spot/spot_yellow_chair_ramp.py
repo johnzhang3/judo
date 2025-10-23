@@ -101,7 +101,7 @@ class SpotYellowChairRamp(SpotBase):
         ).sum(axis=-1)
 
         # Compute l2 distance from torso pos. to object pos.
-        torso_proximity_reward = config.w_torso_proximity * np.linalg.norm(body_pos - object_pos, axis=-1).mean(-1)
+        torso_proximity_reward = -config.w_torso_proximity * np.linalg.norm(body_pos - object_pos, axis=-1).mean(-1)
 
         # Compute l2 distance from torso pos. to object pos.
         gripper_proximity_reward = -config.w_gripper_proximity * np.linalg.norm(

@@ -232,7 +232,6 @@ class SpotBase(Task[ConfigT], Generic[ConfigT]):
             out = out.squeeze(axis=0)
         if T == 1 and out.ndim == 3:
             out = out[:, 0, :]
-        # out[..., :] = self.default_policy_command
         return out
 
     def reward(
