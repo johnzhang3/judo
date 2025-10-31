@@ -84,4 +84,3 @@ target_link_libraries(_judo_cpp PRIVATE
 
 # 5. Install the module
 install(TARGETS _judo_cpp DESTINATION judo_cpp)
-

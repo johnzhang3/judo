@@ -101,4 +101,3 @@ Returns:
     None
 )doc");
 }
-

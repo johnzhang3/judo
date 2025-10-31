@@ -25,9 +25,7 @@ else:
 class RolloutBackend:
     """The backend for conducting multithreaded rollouts."""
 
-    def __init__(
-        self, num_threads: int, backend: Literal["mujoco", "mujoco_cpp"]
-    ) -> None:
+    def __init__(self, num_threads: int, backend: Literal["mujoco", "mujoco_cpp"]) -> None:
         """Initialize the backend with a number of threads."""
         self.backend = backend
         if self.backend == "mujoco_cpp":
@@ -96,4 +94,3 @@ class SimBackend:
         """Conduct a simulation step using cpp sim."""
         x0 = np.concatenate([sim_data.qpos, sim_data.qvel])
         sim(sim_model, sim_data, x0, sim_controls)
-

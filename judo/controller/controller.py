@@ -15,6 +15,7 @@ from judo.gui import slider
 from judo.optimizers import Optimizer, OptimizerConfig, get_registered_optimizers
 from judo.tasks import Task, TaskConfig, get_registered_tasks
 from judo.utils.mujoco import RolloutBackend, make_model_data_pairs
+
 try:
     from judo.utils.mujoco_cpp import RolloutBackend as CppRolloutBackend
 except ImportError:
@@ -73,9 +74,7 @@ class Controller:
         self.model_data_pairs = make_model_data_pairs(self.model, self.optimizer_cfg.num_rollouts)
 
         # Determine backend: config override > parameter > "mujoco"
-        backend: Literal["mujoco", "mujoco_cpp"] = (
-            controller_config.rollout_backend or rollout_backend or "mujoco"
-        )
+        backend: Literal["mujoco", "mujoco_cpp"] = controller_config.rollout_backend or rollout_backend or "mujoco"
 
         if backend == "mujoco_cpp":
             if CppRolloutBackend is None:
@@ -397,7 +396,7 @@ def make_controller(
     init_optimizer: str,
     task_registration_cfg: DictConfig | None = None,
     optimizer_registration_cfg: DictConfig | None = None,
-        rollout_backend: Literal["mujoco", "mujoco_cpp"] | None = None,
+    rollout_backend: Literal["mujoco", "mujoco_cpp"] | None = None,
 ) -> Controller:
     """Make a controller."""
     available_optimizers = get_registered_optimizers()
