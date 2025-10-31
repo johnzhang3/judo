@@ -9,9 +9,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check-if-codeowner:
+    runs-on: ubuntu-latest
+    outputs:
+      is_owner: ${{ steps.check.outputs.is_owner }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Check actor
+        id: check
+        run: |
+          actor=${{ github.actor }}
+          if grep -qE "(^|[[:space:]])@$actor([[:space:]]|$)" .github/CODEOWNERS; then
+            echo "is_owner=true" >> $GITHUB_OUTPUT
+            echo "Actor is code owner"
+          else
+            echo "is_owner=false" >> $GITHUB_OUTPUT
+            echo "Actor is not a code owner"
+          fi
+
   build-and-publish:
     runs-on: ubuntu-latest
-    if: (github.actor == 'alberthli') || (github.actor == 'slecleach') || (github.actor == 'pculbertson')
+    needs: check-if-codeowner
+    if: needs.check-if-codeowner.outputs.is_owner == 'true'
 
     steps:
       - name: Checkout code
