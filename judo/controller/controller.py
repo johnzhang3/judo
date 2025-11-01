@@ -421,7 +421,8 @@ def make_controller(
     task = task_cls()
 
     optimizer_cls, optimizer_config_cls = optimizer_entry
-    optimizer = optimizer_cls(optimizer_config_cls(), task.nu)
+    optimizer_config = optimizer_config_cls()
+    optimizer = optimizer_cls(optimizer_config, task.nu)
 
     controller_cfg = ControllerConfig()
     controller_cfg.set_override(init_task)
@@ -430,5 +431,6 @@ def make_controller(
         controller_config=controller_cfg,
         task=task,
         optimizer=optimizer,
+        optimizer_config=optimizer_config,
         rollout_backend=rollout_backend,
     )
