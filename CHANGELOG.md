@@ -1,15 +1,15 @@
 # Unreleased
 
 ## Added
-* C++ rollout implementations for MuJoCo simulations (@johnzhang-rai, @jbruedigam-bdai, #95)
+* C++ rollout implementations for MuJoCo simulations (@johnzhang3, @jbruedigam-bdai, #95)
     * Implemented high-performance C++ backend for MuJoCo rollouts with significant speedup
     * Added custom C++ rollout functions for Spot robot tasks with ONNX policy inference
     * Separated task-space control dimensions from simulation control dimensions for better flexibility
-* Added `cutoff_time` parameter to `OptimizerConfig` (@johnzhang-rai, #95)
+* Added `cutoff_time` parameter to `OptimizerConfig` (@johnzhang3, #95)
     * Allows specifying maximum wall-clock time (in seconds) per rollout thread before termination
     * Prevents single threads from blocking optimization when rollouts take too long
     * Default value: 0.2 seconds
-* New Spot robot tasks (@johnzhang-rai, #95)
+* New Spot robot tasks (@johnzhang3, #95)
     * `spot_yellow_chair`: Manipulation task for pushing a yellow office chair
     * `spot_yellow_chair_ramp`: Chair manipulation with ramp navigation
     * `spot_box`: Box manipulation task for Spot
