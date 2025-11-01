@@ -40,6 +40,7 @@ class SpotBox(SpotBase):
     """Task getting Spot to move a box to a desired goal location."""
 
     name: str = "spot_box"
+    config_t: type[SpotBoxConfig] = SpotBoxConfig
 
     def __init__(self, model_path: str = XML_PATH) -> None:
         """Initialize Spot box task.
@@ -59,7 +60,6 @@ class SpotBox(SpotBase):
         states: np.ndarray,
         sensors: np.ndarray,
         controls: np.ndarray,
-        config: SpotBoxConfig,
         system_metadata: dict[str, Any] | None = None,
     ) -> np.ndarray:
         """Reward function for the Spot box moving task."""
@@ -74,28 +74,28 @@ class SpotBox(SpotBase):
         end_effector_to_object = sensors[..., self.end_effector_to_object_idx]
 
         # Check if any state in the rollout has spot fallen
-        spot_fallen_reward = -config.fall_penalty * (body_height <= config.spot_fallen_threshold).any(axis=-1)
+        spot_fallen_reward = -self.config.fall_penalty * (body_height <= self.config.spot_fallen_threshold).any(axis=-1)
 
         # Compute l2 distance from object pos. to goal.
-        goal_reward = -config.w_goal * np.linalg.norm(
-            object_pos - np.array(config.goal_position)[None, None], axis=-1
+        goal_reward = -self.config.w_goal * np.linalg.norm(
+            object_pos - np.array(self.config.goal_position)[None, None], axis=-1
         ).mean(-1)
 
-        box_orientation_reward = -config.w_orientation * np.abs(
-            np.dot(object_y_axis, Z_AXIS) > config.orientation_threshold
+        box_orientation_reward = -self.config.w_orientation * np.abs(
+            np.dot(object_y_axis, Z_AXIS) > self.config.orientation_threshold
         ).sum(axis=-1)
 
         # Compute l2 distance from torso pos. to object pos.
-        torso_proximity_reward = config.w_torso_proximity * np.linalg.norm(body_pos - object_pos, axis=-1).mean(-1)
+        torso_proximity_reward = self.config.w_torso_proximity * np.linalg.norm(body_pos - object_pos, axis=-1).mean(-1)
 
         # Compute l2 distance from torso pos. to object pos.
-        gripper_proximity_reward = -config.w_gripper_proximity * np.linalg.norm(
+        gripper_proximity_reward = -self.config.w_gripper_proximity * np.linalg.norm(
             end_effector_to_object,
             axis=-1,
         ).mean(-1)
 
         # Compute a velocity penalty to prefer small velocity commands.
-        controls_reward = -config.w_controls * np.linalg.norm(controls, axis=-1).mean(-1)
+        controls_reward = -self.config.w_controls * np.linalg.norm(controls, axis=-1).mean(-1)
 
         assert spot_fallen_reward.shape == (batch_size,)
         assert goal_reward.shape == (batch_size,)

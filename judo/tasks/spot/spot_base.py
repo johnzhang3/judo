@@ -239,7 +239,6 @@ class SpotBase(Task[ConfigT], Generic[ConfigT]):
         states: np.ndarray,
         sensors: np.ndarray,
         controls: np.ndarray,
-        config: ConfigT,
         system_metadata: dict[str, Any] | None = None,
     ) -> np.ndarray:
         """Simple standing reward used as a default for base class.

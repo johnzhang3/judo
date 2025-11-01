@@ -54,6 +54,7 @@ class SpotYellowChair(SpotBase[SpotYellowChairConfig]):
     """Task getting Spot to move a box to a desired goal location."""
 
     name: str = "spot_yellow_chair"
+    config_t: type[SpotYellowChairConfig] = SpotYellowChairConfig
 
     def __init__(self, model_path: str = XML_PATH) -> None:
         """Initialize Spot yellow chair task.
@@ -75,7 +76,6 @@ class SpotYellowChair(SpotBase[SpotYellowChairConfig]):
         states: np.ndarray,
         sensors: np.ndarray,
         controls: np.ndarray,
-        config: SpotYellowChairConfig,
         system_metadata: dict[str, Any] | None = None,
     ) -> np.ndarray:
         """Reward function for the Spot box moving task."""
@@ -94,41 +94,41 @@ class SpotYellowChair(SpotBase[SpotYellowChairConfig]):
 
         fence_violated_x = (body_pos[..., 0] < HARDWARE_FENCE_X[0]) | (body_pos[..., 0] > HARDWARE_FENCE_X[1])
         fence_violated_y = (body_pos[..., 1] < HARDWARE_FENCE_Y[0]) | (body_pos[..., 1] > HARDWARE_FENCE_Y[1])
-        spot_fence_reward = -config.w_fence * (fence_violated_x | fence_violated_y).any(axis=-1)
+        spot_fence_reward = -self.config.w_fence * (fence_violated_x | fence_violated_y).any(axis=-1)
 
         # Check if any state in the rollout has spot fallen
-        spot_fallen_reward = -config.fall_penalty * (body_height <= config.spot_fallen_threshold).any(axis=-1)
+        spot_fallen_reward = -self.config.fall_penalty * (body_height <= self.config.spot_fallen_threshold).any(axis=-1)
 
         # Compute l2 distance from object pos. to goal.
-        goal_reward = -config.w_goal * np.linalg.norm(
-            object_pos - np.array(config.goal_position)[None, None], axis=-1
+        goal_reward = -self.config.w_goal * np.linalg.norm(
+            object_pos - np.array(self.config.goal_position)[None, None], axis=-1
         ).mean(-1)
 
         orientation_alignement = np.minimum(
-            np.dot(object_z_axis, Z_AXIS) - 1, config.orientation_threshold
+            np.dot(object_z_axis, Z_AXIS) - 1, self.config.orientation_threshold
         )  # ranging from -2 to 0
-        object_orientation_reward = +config.w_orientation * np.exp(
-            config.orientation_sparsity * orientation_alignement
+        object_orientation_reward = +self.config.w_orientation * np.exp(
+            self.config.orientation_sparsity * orientation_alignement
         ).sum(axis=-1)  # ranging from 0 to w_orientation
 
         # Compute l2 distance from torso pos. to object pos.
-        torso_proximity_reward = config.w_torso_proximity * np.minimum(
-            config.torso_proximity_threshold, np.linalg.norm(body_pos - object_pos, axis=-1)
+        torso_proximity_reward = self.config.w_torso_proximity * np.minimum(
+            self.config.torso_proximity_threshold, np.linalg.norm(body_pos - object_pos, axis=-1)
         ).mean(-1)
 
         # Compute l2 distance from torso pos. to object pos.
-        gripper_proximity_reward = -config.w_gripper_proximity * np.linalg.norm(
+        gripper_proximity_reward = -self.config.w_gripper_proximity * np.linalg.norm(
             gripper_to_object,
             axis=-1,
         ).mean(-1)
 
         # Compute squared l2 norm of the object velocity.
-        object_linear_velocity_reward = -config.w_object_velocity * np.square(
+        object_linear_velocity_reward = -self.config.w_object_velocity * np.square(
             np.linalg.norm(object_linear_velocity, axis=-1).mean(-1)
         )
 
         # Compute a velocity penalty to prefer small velocity commands.
-        controls_reward = -config.w_controls * np.linalg.norm(controls[..., :3], axis=-1).mean(-1)
+        controls_reward = -self.config.w_controls * np.linalg.norm(controls[..., :3], axis=-1).mean(-1)
 
         assert spot_fence_reward.shape == (batch_size,)
         assert spot_fallen_reward.shape == (batch_size,)

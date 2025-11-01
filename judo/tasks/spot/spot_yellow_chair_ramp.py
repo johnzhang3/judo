@@ -53,6 +53,7 @@ class SpotYellowChairRamp(SpotBase):
     """Task getting Spot to move a box to a desired goal location."""
 
     name: str = "spot_yellow_chair_ramp"
+    config_t: type[SpotYellowChairRampConfig] = SpotYellowChairRampConfig
 
     def __init__(self, model_path: str = XML_PATH) -> None:
         """Initialize Spot yellow chair ramp task.
@@ -73,7 +74,6 @@ class SpotYellowChairRamp(SpotBase):
         states: np.ndarray,
         sensors: np.ndarray,
         controls: np.ndarray,
-        config: SpotYellowChairRampConfig,
         system_metadata: dict[str, Any] | None = None,
     ) -> np.ndarray:
         """Reward function for the Spot box moving task."""
@@ -91,28 +91,30 @@ class SpotYellowChairRamp(SpotBase):
         end_effector_to_object = sensors[..., self.end_effector_to_object_idx]
 
         # Check if any state in the rollout has spot fallen
-        spot_fallen_reward = -config.fall_penalty * (body_height <= config.spot_fallen_threshold).any(axis=-1)
+        spot_fallen_reward = -self.config.fall_penalty * (body_height <= self.config.spot_fallen_threshold).any(axis=-1)
 
         # Compute l2 distance from object pos. to goal.
-        goal_reward = -config.w_goal * np.linalg.norm(
-            object_pos - np.array(config.goal_position)[None, None], axis=-1
+        goal_reward = -self.config.w_goal * np.linalg.norm(
+            object_pos - np.array(self.config.goal_position)[None, None], axis=-1
         ).mean(-1)
 
-        object_orientation_reward = -config.w_orientation * (
-            np.abs(np.dot(object_y_axis, Z_AXIS)) > config.orientation_threshold
+        object_orientation_reward = -self.config.w_orientation * (
+            np.abs(np.dot(object_y_axis, Z_AXIS)) > self.config.orientation_threshold
         ).sum(axis=-1)
 
         # Compute l2 distance from torso pos. to object pos.
-        torso_proximity_reward = -config.w_torso_proximity * np.linalg.norm(body_pos - object_pos, axis=-1).mean(-1)
+        torso_proximity_reward = -self.config.w_torso_proximity * np.linalg.norm(body_pos - object_pos, axis=-1).mean(
+            -1
+        )
 
         # Compute l2 distance from torso pos. to object pos.
-        gripper_proximity_reward = -config.w_gripper_proximity * np.linalg.norm(
+        gripper_proximity_reward = -self.config.w_gripper_proximity * np.linalg.norm(
             end_effector_to_object,
             axis=-1,
         ).mean(-1)
 
         # Compute squared l2 norm of the object velocity.
-        object_linear_velocity_reward = -config.w_object_velocity * np.square(
+        object_linear_velocity_reward = -self.config.w_object_velocity * np.square(
             np.linalg.norm(object_linear_velocity, axis=-1).mean(-1)
         )
 
@@ -120,15 +122,15 @@ class SpotYellowChairRamp(SpotBase):
         object_off_ramp_y = object_pos[..., 1] >= 5.25
         object_off_ramp = np.logical_or(object_off_ramp_x, object_off_ramp_y)
 
-        object_off_ramp_penalty = -config.w_object_off_ramp * object_off_ramp.mean(-1)
+        object_off_ramp_penalty = -self.config.w_object_off_ramp * object_off_ramp.mean(-1)
 
-        object_centered = -config.w_object_centered * np.abs(object_pos[..., 0] - 2.0).mean(-1)
+        object_centered = -self.config.w_object_centered * np.abs(object_pos[..., 0] - 2.0).mean(-1)
 
         spot_off_ramp = body_pos[..., 1] >= 4.5
-        spot_off_ramp_penalty = -config.w_spot_off_ramp * spot_off_ramp.mean(-1)
+        spot_off_ramp_penalty = -self.config.w_spot_off_ramp * spot_off_ramp.mean(-1)
 
         # Compute a velocity penalty to prefer small velocity commands.
-        controls_reward = -config.w_controls * np.linalg.norm(controls[..., :3], axis=-1).mean(-1)
+        controls_reward = -self.config.w_controls * np.linalg.norm(controls[..., :3], axis=-1).mean(-1)
 
         assert spot_fallen_reward.shape == (batch_size,)
         assert goal_reward.shape == (batch_size,)
