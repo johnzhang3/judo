@@ -35,6 +35,8 @@ We recommend installing `judo` using `pip` as follows:
 pip install judo-rai  # if you want dev dependencies, use judo-rai[dev]
 ```
 
+Prebuilt wheels with C++ extensions are provided for Linux and macOS (both Intel and Apple Silicon) for Python 3.10+.
+
 ### Developers
 #### Conda
 For developers, run the following commands from this folder after cloning:

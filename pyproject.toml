@@ -50,7 +50,7 @@ benchmark = "judo.cli:benchmark"
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["judo"]
+packages = ["judo", "judo_cpp"]
 
 [project.optional-dependencies]
 docs = [
