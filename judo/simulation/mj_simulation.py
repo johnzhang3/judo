@@ -1,5 +1,8 @@
 # Copyright (c) 2025 Robotics and AI Institute LLC. All rights reserved.
 
+from typing import cast
+
+import numpy as np
 from omegaconf import DictConfig
 
 from judo.app.structs import MujocoState
@@ -46,14 +49,14 @@ class MJSimulation(Simulation):
     @property
     def sim_state(self) -> MujocoState:
         """Returns the current simulation state."""
-        return MujocoState(  # pyright: ignore[reportArgumentType]
+        return MujocoState(
             time=self.task.data.time,
-            qpos=self.task.data.qpos,
-            qvel=self.task.data.qvel,
-            xpos=self.task.data.xpos,
-            xquat=self.task.data.xquat,
-            mocap_pos=self.task.data.mocap_pos,
-            mocap_quat=self.task.data.mocap_quat,
+            qpos=cast(np.ndarray, self.task.data.qpos),
+            qvel=cast(np.ndarray, self.task.data.qvel),
+            xpos=cast(np.ndarray, self.task.data.xpos),
+            xquat=cast(np.ndarray, self.task.data.xquat),
+            mocap_pos=cast(np.ndarray, self.task.data.mocap_pos),
+            mocap_quat=cast(np.ndarray, self.task.data.mocap_quat),
             sim_metadata=self.task.get_sim_metadata(),
         )
 
