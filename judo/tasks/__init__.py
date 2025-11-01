@@ -14,15 +14,15 @@ from judo.tasks.spot.spot_yellow_chair import SpotYellowChair, SpotYellowChairCo
 from judo.tasks.spot.spot_yellow_chair_ramp import SpotYellowChairRamp, SpotYellowChairRampConfig
 
 _registered_tasks: Dict[str, Tuple[Type[Task], Type[TaskConfig]]] = {
-    "spot_box": (SpotBox, SpotBoxConfig),
-    "spot_yellow_chair": (SpotYellowChair, SpotYellowChairConfig),
-    "spot_yellow_chair_ramp": (SpotYellowChairRamp, SpotYellowChairRampConfig),
-    "cylinder_push": (CylinderPush, CylinderPushConfig),
-    "cartpole": (Cartpole, CartpoleConfig),
-    "fr3_pick": (FR3Pick, FR3PickConfig),
-    "leap_cube": (LeapCube, LeapCubeConfig),
-    "leap_cube_down": (LeapCubeDown, LeapCubeDownConfig),
-    "caltech_leap_cube": (CaltechLeapCube, CaltechLeapCubeConfig),
+    SpotBox.name: (SpotBox, SpotBoxConfig),
+    SpotYellowChair.name: (SpotYellowChair, SpotYellowChairConfig),
+    SpotYellowChairRamp.name: (SpotYellowChairRamp, SpotYellowChairRampConfig),
+    CylinderPush.name: (CylinderPush, CylinderPushConfig),
+    Cartpole.name: (Cartpole, CartpoleConfig),
+    FR3Pick.name: (FR3Pick, FR3PickConfig),
+    LeapCube.name: (LeapCube, LeapCubeConfig),
+    LeapCubeDown.name: (LeapCubeDown, LeapCubeDownConfig),
+    CaltechLeapCube.name: (CaltechLeapCube, CaltechLeapCubeConfig),
 }
 
 

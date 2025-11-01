@@ -37,9 +37,16 @@ class LeapCubeConfig(TaskConfig):
 class LeapCube(Task[LeapCubeConfig]):
     """Defines the LEAP cube rotation task."""
 
-    def __init__(self, model_path: str = XML_PATH, sim_model_path: str | None = SIM_XML_PATH) -> None:
+    name: str = "leap_cube"
+    config_t: type[LeapCubeConfig] = LeapCubeConfig
+
+    def __init__(
+        self,
+        model_path: str = XML_PATH,
+        sim_model_path: str | None = SIM_XML_PATH,
+    ) -> None:
         """Initializes the LEAP cube rotation task."""
-        super().__init__(model_path, sim_model_path=sim_model_path)
+        super().__init__(model_path=model_path, sim_model_path=sim_model_path)
         self.goal_pos = np.array([0.0, 0.03, 0.1])
         self.goal_quat = np.array([1.0, 0.0, 0.0, 0.0])
         self.qpos_home = QPOS_HOME
@@ -58,7 +65,6 @@ class LeapCube(Task[LeapCubeConfig]):
         states: np.ndarray,
         sensors: np.ndarray,
         controls: np.ndarray,
-        config: LeapCubeConfig,
         system_metadata: dict[str, Any] | None = None,
     ) -> np.ndarray:
         """Implements the LEAP cube rotation tracking task reward."""
@@ -67,8 +73,8 @@ class LeapCube(Task[LeapCubeConfig]):
         goal_quat = system_metadata.get("goal_quat", np.array([1.0, 0.0, 0.0, 0.0]))
 
         # weights
-        w_pos = config.w_pos
-        w_rot = config.w_rot
+        w_pos = self.config.w_pos
+        w_rot = self.config.w_rot
 
         # "standard" tracking task
         qo_pos_traj = states[..., :3]
