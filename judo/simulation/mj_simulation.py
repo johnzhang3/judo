@@ -48,12 +48,12 @@ class MJSimulation(Simulation):
         """Returns the current simulation state."""
         return MujocoState(
             time=self.task.data.time,
-            qpos=self.task.data.qpos,
-            qvel=self.task.data.qvel,
-            xpos=self.task.data.xpos,
-            xquat=self.task.data.xquat,
-            mocap_pos=self.task.data.mocap_pos,
-            mocap_quat=self.task.data.mocap_quat,
+            qpos=self.task.data.qpos,  # type: ignore[arg-type]
+            qvel=self.task.data.qvel,  # type: ignore[arg-type]
+            xpos=self.task.data.xpos,  # type: ignore[arg-type]
+            xquat=self.task.data.xquat,  # type: ignore[arg-type]
+            mocap_pos=self.task.data.mocap_pos,  # type: ignore[arg-type]
+            mocap_quat=self.task.data.mocap_quat,  # type: ignore[arg-type]
             sim_metadata=self.task.get_sim_metadata(),
         )
 
