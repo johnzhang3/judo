@@ -39,6 +39,8 @@ class SpotBoxConfig(SpotBaseConfig):
 class SpotBox(SpotBase):
     """Task getting Spot to move a box to a desired goal location."""
 
+    name: str = "spot_box"
+
     def __init__(self, model_path: str = XML_PATH) -> None:
         """Initialize Spot box task.
 

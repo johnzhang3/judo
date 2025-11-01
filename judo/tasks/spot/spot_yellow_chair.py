@@ -53,6 +53,8 @@ class SpotYellowChairConfig(SpotBaseConfig):
 class SpotYellowChair(SpotBase[SpotYellowChairConfig]):
     """Task getting Spot to move a box to a desired goal location."""
 
+    name: str = "spot_yellow_chair"
+
     def __init__(self, model_path: str = XML_PATH) -> None:
         """Initialize Spot yellow chair task.
 
