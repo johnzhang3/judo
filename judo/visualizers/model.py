@@ -220,7 +220,7 @@ class ViserMjModel:
                 self._traces[0].colors = np.tile(self._traces[0].colors, (all_traces_rollout_size, 2, 1))
             else:
                 # Already (N, 2, 3), just tile the first segment
-                self._traces[0].colors = np.tile(self._traces[0].colors[0:1, :, :], (all_traces_rollout_size, 1, 1))
+                self._traces[0].colors = np.tile(self._traces[0].colors[:1, :, :], (all_traces_rollout_size, 1, 1))
 
         if (rest_trace_size := num_traces - all_traces_rollout_size) > 0:
             self._traces.append(
@@ -236,7 +236,7 @@ class ViserMjModel:
                 self._traces[1].colors = np.tile(self._traces[1].colors, (rest_trace_size, 2, 1))
             else:
                 # Already (N, 2, 3), just tile the first segment
-                self._traces[1].colors = np.tile(self._traces[1].colors[0:1, :, :], (rest_trace_size, 1, 1))
+                self._traces[1].colors = np.tile(self._traces[1].colors[:1, :, :], (rest_trace_size, 1, 1))
 
     def remove_traces(self) -> None:
         """Remove traces."""
